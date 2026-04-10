@@ -36,4 +36,3 @@ Companion document with deeper coverage:
 - [Sui Object Display Docs](https://docs.sui.io/standards/display)
 - [Display Preview Editor](https://mystenlabs.github.io/display-preview)
 - [PR #25242 — GraphQL + nested templates](https://github.com/MystenLabs/sui/pull/25242)
-- [Linear: SOLENG-599](https://linear.app/mysten-labs/issue/SOLENG-599/investigate-new-display)
