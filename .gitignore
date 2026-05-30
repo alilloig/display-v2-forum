@@ -1,0 +1,5 @@
+# Code Forge build state — local, regeneratable from the spec; not part of the deliverable
+.forge/
+
+# Stray Sui ephemeral publication files (test-publish default pubfile)
+Pub*.toml
