@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { ConnectButton } from '@mysten/dapp-kit-react/ui';
-import { useCurrentAccount } from '@mysten/dapp-kit-react';
 import { DEFAULT_SCHEMA } from './schema';
 import type { Schema } from './schema';
 import { useDeployment } from './DeploymentContext';
+import { useSigner } from './SignerContext';
 import { Stepper } from './components/Stepper';
+import { SignerBar } from './components/SignerBar';
 import { TraitDesigner } from './components/TraitDesigner';
 import { PublishStep } from './components/PublishStep';
 import { MintHero } from './components/MintHero';
@@ -14,15 +15,15 @@ import { DisplayEditor } from './components/DisplayEditor';
 const STEPS = ['Design traits', 'Publish', 'Mint', 'Display playground'];
 
 export function App() {
-  const account = useCurrentAccount();
+  const { address } = useSigner();
   const { deployment } = useDeployment();
   const [step, setStep] = useState(0);
   const [schema, setSchema] = useState<Schema>(() => structuredClone(DEFAULT_SCHEMA));
   const [refetchTrigger, setRefetchTrigger] = useState(0);
 
-  // Step gating: Publish needs a wallet; Mint/Display need a published deployment.
+  // Step gating: Publish needs a signer (wallet or dev key); Mint/Display need a deployment.
   const canGoTo = (i: number) => {
-    if (i === 1) return !!account;
+    if (i === 1) return !!address;
     if (i === 2 || i === 3) return !!deployment;
     return true;
   };
@@ -38,6 +39,8 @@ export function App() {
         </div>
         <ConnectButton />
       </header>
+
+      <SignerBar />
 
       <Stepper steps={STEPS} current={step} canGoTo={canGoTo} onSelect={setStep} />
 

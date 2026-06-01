@@ -2,17 +2,16 @@
 // the exact order mintParams() defines (the same order codegen emits the Move signature).
 import { useState } from 'react';
 import { Transaction } from '@mysten/sui/transactions';
-import { useDAppKit, useCurrentAccount } from '@mysten/dapp-kit-react';
 import { mintParams } from '../schema';
 import { useDeployment } from '../DeploymentContext';
+import { useSigner } from '../SignerContext';
 
 interface MintHeroProps {
   onMinted?: () => void;
 }
 
 export function MintHero({ onMinted }: MintHeroProps) {
-  const dAppKit = useDAppKit();
-  const account = useCurrentAccount();
+  const { address, signAndExecute } = useSigner();
   const { deployment } = useDeployment();
 
   const params = deployment ? mintParams(deployment.schema) : [];
@@ -22,7 +21,7 @@ export function MintHero({ onMinted }: MintHeroProps) {
   const [busy, setBusy] = useState(false);
 
   if (!deployment) return null;
-  const isConnected = account !== null;
+  const isConnected = address !== null;
   const val = (k: string, fallback: string | boolean) => (k in values ? values[k] : fallback);
 
   async function handleSubmit() {
@@ -50,11 +49,11 @@ export function MintHero({ onMinted }: MintHeroProps) {
         }),
       });
 
-      const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-      if (result.FailedTransaction) {
-        setStatus(`Error: ${result.FailedTransaction.status.error?.message ?? 'Transaction failed'}`);
+      const r = await signAndExecute(tx);
+      if (!r.ok) {
+        setStatus(`Error: ${r.error}`);
       } else {
-        setStatus(`Minted! Digest: ${result.Transaction.digest}`);
+        setStatus(`Minted! Digest: ${r.digest}`);
         setValues({});
         onMinted?.();
       }

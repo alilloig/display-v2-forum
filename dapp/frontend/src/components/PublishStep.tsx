@@ -2,11 +2,11 @@
 // bridge, which builds + test-publishes the bespoke contract, creates the Display, and
 // transfers the DisplayCap to the wallet. Stores the result in DeploymentContext.
 import { useEffect, useState } from 'react';
-import { useCurrentAccount } from '@mysten/dapp-kit-react';
 import { validateSchema } from '../schema';
 import type { Schema } from '../schema';
 import { bridgeHealth, publishSchema } from '../bridge';
 import { useDeployment } from '../DeploymentContext';
+import { useSigner } from '../SignerContext';
 
 interface Props {
   schema: Schema;
@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function PublishStep({ schema, onPublished }: Props) {
-  const account = useCurrentAccount();
+  const { address } = useSigner();
   const { deployment, setDeployment } = useDeployment();
   const [bridgeUp, setBridgeUp] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,14 +27,14 @@ export function PublishStep({ schema, onPublished }: Props) {
   }, []);
 
   const schemaErrors = validateSchema(schema);
-  const canPublish = !!account && bridgeUp === true && schemaErrors.length === 0 && !busy;
+  const canPublish = !!address && bridgeUp === true && schemaErrors.length === 0 && !busy;
 
   async function handlePublish() {
-    if (!account) return;
+    if (!address) return;
     setBusy(true);
     setError('');
     try {
-      const result = await publishSchema(schema, account.address);
+      const result = await publishSchema(schema, address);
       setDeployment(result);
       onPublished();
     } catch (e) {
@@ -58,7 +58,7 @@ export function PublishStep({ schema, onPublished }: Props) {
           Bridge not reachable on <code>127.0.0.1:8787</code>. Start it with <code>pnpm play</code> (runs the bridge + dev server).
         </p>
       )}
-      {!account && <p style={{ color: '#999', fontSize: '0.85rem' }}>Connect your wallet first (the DisplayCap will be sent to it).</p>}
+      {!address && <p style={{ color: '#999', fontSize: '0.85rem' }}>Connect a wallet (or switch the signer to "Dev key") first — the DisplayCap will be sent to that address.</p>}
       {schemaErrors.length > 0 && <p style={{ color: '#dc2626', fontSize: '0.85rem' }}>Fix the schema errors in step 1 before publishing.</p>}
 
       <button

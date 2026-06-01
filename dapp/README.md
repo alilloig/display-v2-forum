@@ -50,11 +50,22 @@ cap-transfer on `POST /publish`. It is a local dev tool: it binds `127.0.0.1` on
 identifier/type in your schema is validated against a strict allowlist before any Move is
 generated (see `dapp/frontend/src/schema.js`), so the generated module is structurally fixed.
 
-### Slush wallet caveat
+### Signing: Dev key (recommended for localnet) vs wallet
 
-Slush defaults to mainnet. To use localnet: **Settings → Networks → Add custom network**,
-RPC `http://127.0.0.1:9000`, then switch to it before connecting. The wallet you connect at
-publish time receives the `DisplayCap` and is the only one that can edit the Display (step 4).
+The header has a **Signer** toggle:
+
+- **Dev key** (recommended for localnet) — a local Ed25519 keypair held in the browser,
+  funded from the localnet faucet with one click. It signs `mint` / `set` / `unset` directly
+  with no wallet popups, which makes the whole wizard hands-free (and automatable). Use this
+  for local development and end-to-end testing.
+- **Wallet** — a browser wallet via `ConnectButton`. Note: the hosted **Slush web/zkLogin
+  wallet cannot sign localnet transactions** (it submits through its own mainnet/testnet
+  backend). To use a real wallet on localnet you need one that supports a local keypair + a
+  custom `http://127.0.0.1:9000` RPC. The wallet path is most useful when the dapp targets a
+  public network.
+
+Whichever signer is active when you Publish receives the `DisplayCap`, so it (and only it) can
+edit the Display in step 4.
 
 ## CLI path + automated tests (no browser)
 
@@ -73,7 +84,9 @@ templates, asserts the resolved `display.data` matches the expected rendered str
 
 ## Manual playground checklist (browser + wallet)
 
-With `start-localnet.sh` + `pnpm play` running and Slush on localnet:
+With `start-localnet.sh` + `pnpm play` running. Pick a **Signer** in the header first —
+**Dev key** (click "Fund from faucet") gives a popup-free run; **Wallet** needs a
+localnet-capable wallet (see the signing note above). Then:
 
 - [ ] **Step 1 — Design.** Add/edit fields, add a nested group (e.g. `stats` with
       `strength: u64`, `defense: u64`). The "Generated Move" panel updates live and the

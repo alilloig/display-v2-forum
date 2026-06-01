@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCurrentClient, useCurrentAccount } from '@mysten/dapp-kit-react';
+import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { useDeployment } from '../DeploymentContext';
+import { useSigner } from '../SignerContext';
 
 // The teaching point of this component:
 // Each NFT is fetched with both showContent (raw on-chain struct fields) and showDisplay
@@ -15,9 +16,9 @@ interface MyHeroesProps {
 
 export function MyHeroes({ refetchTrigger }: MyHeroesProps) {
   const client = useCurrentClient();
-  const account = useCurrentAccount();
+  const { address } = useSigner();
   const { deployment } = useDeployment();
-  const owner = account?.address;
+  const owner = address ?? undefined;
   const structType = deployment ? `${deployment.packageId}::hero::${deployment.schema.typeName}` : null;
 
   const { data, isLoading, error, refetch } = useQuery({

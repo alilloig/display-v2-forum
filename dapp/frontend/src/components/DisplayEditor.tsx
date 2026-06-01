@@ -4,12 +4,13 @@
 // render change (before → after) while the raw struct fields stay fixed. Cap-gated.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useDAppKit, useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
+import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { Transaction } from '@mysten/sui/transactions';
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { displayTokens } from '../schema';
 import { useDeployment } from '../DeploymentContext';
+import { useSigner } from '../SignerContext';
 
 // The 7 standard Display props (drop targets).
 const DISPLAY_PROPS = ['name', 'description', 'image_url', 'link', 'thumbnail_url', 'project_url', 'creator'] as const;
@@ -66,8 +67,7 @@ function SlotRow({ propKey, value, markedForUnset, onChange, onToggleUnset }: Sl
 }
 
 export function DisplayEditor() {
-  const dAppKit = useDAppKit();
-  const account = useCurrentAccount();
+  const { address, signAndExecute } = useSigner();
   const client = useCurrentClient();
   const { deployment } = useDeployment();
 
@@ -99,7 +99,7 @@ export function DisplayEditor() {
     enabled: !!displayCapId,
   });
   const capOwner = capData && typeof capData === 'object' && 'AddressOwner' in capData ? capData.AddressOwner : undefined;
-  const isCapOwner = account !== null && capOwner === account.address;
+  const isCapOwner = address !== null && capOwner === address;
 
   // 2. Current Display fields (so we only allow unset on fields that exist — unset aborts otherwise).
   const { data: currentDisplayData, refetch: refetchDisplay } = useQuery({
@@ -154,7 +154,7 @@ export function DisplayEditor() {
   }
 
   async function handleApply() {
-    if (!account || !deployment) return;
+    if (!address || !deployment) return;
     setBusy(true);
     setStatus('Building transaction…');
     try {
@@ -187,12 +187,12 @@ export function DisplayEditor() {
         return;
       }
 
-      setStatus('Waiting for signature…');
-      const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-      if (result.FailedTransaction) {
-        setStatus(`Error: ${result.FailedTransaction.status.error?.message ?? 'Transaction failed'}`);
+      setStatus('Submitting…');
+      const r = await signAndExecute(tx);
+      if (!r.ok) {
+        setStatus(`Error: ${r.error}`);
       } else {
-        setStatus(`Applied! Digest: ${result.Transaction.digest}`);
+        setStatus(`Applied! Digest: ${r.digest}`);
         if (heroId.trim()) setBeforeDisplay(heroDisplayData?.display?.data ?? {});
         setSlots(Object.fromEntries(DISPLAY_PROPS.map((k) => [k, ''])));
         setUnsetKeys(new Set());
@@ -257,7 +257,7 @@ export function DisplayEditor() {
         </p>
       )}
 
-      <button type="button" onClick={() => void handleApply()} disabled={busy || !account} style={{ padding: '6px 16px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6, cursor: busy ? 'wait' : 'pointer', fontWeight: 600 }}>
+      <button type="button" onClick={() => void handleApply()} disabled={busy || !address} style={{ padding: '6px 16px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6, cursor: busy ? 'wait' : 'pointer', fontWeight: 600 }}>
         {busy ? 'Applying…' : 'Apply'}
       </button>
       {status && <p style={{ marginTop: '0.5rem', color: status.startsWith('Error') ? 'red' : 'green', fontSize: '0.85rem', wordBreak: 'break-all' }}>{status}</p>}
