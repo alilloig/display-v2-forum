@@ -1,132 +1,100 @@
-# Display V2 Showcase — dapp
+# Display V2 Metadata-Views Playground
 
-An interactive showcase that proves the Display V2 thesis:
+An interactive, localnet-only playground for Sui's **Display V2** (`sui::display_registry`).
+You **design** an NFT's traits, **publish** a bespoke contract with one click, **mint**, then
+**drag/compose** those fields into the Display and watch the rendered "metadata view" change.
 
-> An object's on-chain struct fields NEVER change.
-> Only the Display template changes — and the resolved render updates accordingly.
+> The thesis it teaches: an object's on-chain struct fields never change. A **metadata view**
+> (the Display template) is a *mutable projection* over those *immutable* fields.
 
----
+## The 4 steps
 
-## End-to-End Run Guide
+1. **Design traits** — build the NFT's schema (flat `string`/`u64`/`bool` fields + nested
+   groups), with a live preview of the generated Move struct.
+2. **Publish** — one click. A local bridge generates the Move module, builds it,
+   `test-publish`es it to localnet, creates the shared `Display`, and transfers the
+   `DisplayCap` to your connected wallet.
+3. **Mint** — a form generated from your schema; wallet-signed.
+4. **Display playground** — drag your field tokens (flat `{field}` and nested `{group.field}`)
+   into the 7 standard Display properties, compose literal text + tokens, **Apply** (one
+   `set`/`unset` PTB via the cap), and watch the resolved render change **before → after**
+   while the raw struct fields stay fixed.
 
-### Prerequisites
+## Prerequisites
 
-- Sui CLI installed and on PATH.
-- Node.js 20+ and pnpm 9+.
-- Slush (or another wallet browser extension) configured with the localnet.
+- Sui CLI on PATH (built/tested with **1.69.2**).
+- Node.js 20+ and pnpm.
+- A wallet extension (Slush) with **localnet** added (see caveat below).
 
-### Step 1 — Start the local Sui network
+## Run it
 
 ```bash
+# 1. Local Sui network (idempotent; skips if 9000 is already up)
 bash dapp/scripts/start-localnet.sh
-```
 
-Waits until the node is ready on `http://127.0.0.1:9000`.
-
-### Step 2 — Publish the Move package and create the Display
-
-```bash
-bash dapp/scripts/publish.sh
-```
-
-This script:
-- Builds and publishes the `display_showcase` Move package.
-- Calls `create_display` to register `Display<Hero>` in the shared registry.
-- Writes `dapp/frontend/src/deployment.ts` with the live object IDs.
-
-The script is **idempotent** — running it a second time republishes from scratch and
-overwrites `deployment.ts` with the new IDs.
-
-### Step 3 — Install frontend dependencies and start the dev server
-
-```bash
+# 2. Install + run the bridge AND the dev server together
 cd dapp/frontend
 pnpm install
-pnpm dev
+pnpm play          # starts the publish bridge (:8787) + Vite (:5173)
 ```
 
-Open `http://localhost:5173` in your browser.
+Open `http://localhost:5173`, connect Slush (on localnet), and walk the 4 steps. Each
+"Publish" regenerates `dapp/move/sources/hero.move` from your design and republishes — no
+manual CLI steps.
+
+### The publish bridge
+
+`pnpm play` runs `dapp/scripts/bridge.mjs`, a tiny **localhost-only** Node server. A browser
+can't run the Sui CLI, so the bridge does the build + `test-publish` + `create_display` +
+cap-transfer on `POST /publish`. It is a local dev tool: it binds `127.0.0.1` only, and every
+identifier/type in your schema is validated against a strict allowlist before any Move is
+generated (see `dapp/frontend/src/schema.js`), so the generated module is structurally fixed.
 
 ### Slush wallet caveat
 
-Slush defaults to Sui mainnet. To use it against localnet:
+Slush defaults to mainnet. To use localnet: **Settings → Networks → Add custom network**,
+RPC `http://127.0.0.1:9000`, then switch to it before connecting. The wallet you connect at
+publish time receives the `DisplayCap` and is the only one that can edit the Display (step 4).
 
-1. Open Slush settings → Networks → Add custom network.
-2. Name: `localnet`, RPC URL: `http://127.0.0.1:9000`.
-3. Switch to the `localnet` network before connecting.
+## CLI path + automated tests (no browser)
 
----
-
-## Running the E2E Gate (E-001)
+The Move package + scripts also work entirely from the CLI on the **default sample schema**:
 
 ```bash
-bash dapp/scripts/e2e.sh
+bash dapp/scripts/publish.sh          # build + test-publish + create_display → deployment.ts
+node --test dapp/scripts/codegen.test.mjs   # codegen → `sui move build` for many schemas
+node dapp/scripts/bridge.smoke.mjs    # publish the default schema via the bridge, assert cap transfer
+bash dapp/scripts/e2e.sh              # E-001: prove object-unchanged / template-changed / render-updated
 ```
 
-This headless script:
-1. Runs `publish.sh` (idempotent re-publish).
-2. Mints a Hero named "Aragorn" with known fields.
-3. Sets `name`, `image_url`, and `description` templates on `Display<Hero>` via the `DisplayCap`.
-4. Asserts the resolved `display.data` matches the expected rendered strings.
-5. Asserts `content.fields` (raw struct data) is byte-for-byte unchanged.
-6. Unsets the `description` template.
-7. Asserts `description` is absent from `display.data`, while `content.fields` is still unchanged.
+`e2e.sh` exits `E-001 PASS` on success. It mints a Hero, sets `name`/`image_url`/`description`
+templates, asserts the resolved `display.data` matches the expected rendered strings and that
+`content.fields` is byte-for-byte unchanged, then unsets `description` and re-asserts.
 
-Exits 0 on full success (`E-001 PASS`), non-zero on any failure.
+## Manual playground checklist (browser + wallet)
 
-This proves the Display V2 thesis programmatically: object unchanged, template changed,
-rendered output updated.
+With `start-localnet.sh` + `pnpm play` running and Slush on localnet:
 
----
+- [ ] **Step 1 — Design.** Add/edit fields, add a nested group (e.g. `stats` with
+      `strength: u64`, `defense: u64`). The "Generated Move" panel updates live and the
+      schema validates (errors shown inline for bad names).
+- [ ] **Step 2 — Publish.** Connect Slush first. Click **Publish contract**; on success the
+      package/Display/cap ids appear and you advance to Mint. (If the bridge is down you'll be
+      told to run `pnpm play`.)
+- [ ] **Step 3 — Mint.** The form shows one input per designed field (incl. nested as
+      `group.field`); decimals are rejected for `u64`. Approve in Slush; the new object appears
+      in "My …s" with raw fields on the left and "No display fields set yet" on the right.
+- [ ] **Step 4 — Display.** The editor is visible only to the cap-owning wallet. Drag tokens
+      (incl. `{stats.strength}`) into the 7 props, compose a string like
+      `STR {stats.strength} / DEF {stats.defense}`, **Apply** (one Slush prompt). Paste a minted
+      object id into the Before→After panel and Refresh: the **raw struct fields are unchanged**
+      while the **resolved display** goes from before → after. That's the metadata-view thesis.
 
-## E-002 Manual Browser Checklist
+## Notes
 
-The following steps are best verified by a human in the browser (not automated).
-
-### Setup
-
-1. `bash dapp/scripts/start-localnet.sh` — localnet running.
-2. `bash dapp/scripts/publish.sh` — package published, `deployment.ts` written.
-3. `cd dapp/frontend && pnpm install && pnpm dev` — frontend on `http://localhost:5173`.
-
-### Checklist
-
-- [ ] **(1) Cap gate — wrong wallet.**
-  Connect a wallet that does **NOT** own the `DisplayCap` (e.g. a fresh Slush
-  account with no activity).
-  Confirm the Display Editor section shows:
-  > "Connect the deployer wallet (DisplayCap owner) to edit the Display."
-  The slot table and Apply button must NOT be visible.
-
-- [ ] **(2) Connect the deployer wallet.**
-  Switch Slush to the wallet that ran `publish.sh` (the active `sui client` address
-  at publish time — it received the `DisplayCap`).
-  Confirm the Display Editor section now shows all 7 drop-target rows:
-  `name`, `description`, `image_url`, `link`, `thumbnail_url`, `project_url`, `creator`.
-
-- [ ] **(3) Mint a Hero.**
-  Fill in the Mint a Hero form (any name, image URL, species, power, level).
-  Click "Mint Hero" and approve the transaction in Slush.
-  Confirm the new Hero appears in "My Heroes" with:
-  - Left column: raw struct fields (name, image_url, species, power, level).
-  - Right column: "No display fields set yet." (Display templates are empty at this point).
-
-- [ ] **(4) Confirm Display Editor shows all 7 targets.**
-  Verify the 7 droppable rows are present and the 5 token chips
-  (`{name}`, `{image_url}`, `{species}`, `{power}`, `{level}`) are visible above.
-
-- [ ] **(5) Build and apply Display templates.**
-  - Drag `{name}` into the `name` slot. The slot's text input should show `{name}`.
-  - Drag `{species}` into the `description` slot, then type
-    ` with ` (literal), then drag `{power}` and ` power. Level ` and `{level}`.
-    (Or just type directly: `{species} with {power} power. Level {level}`.)
-  - Click **Apply**. Slush should prompt for ONE transaction (all set calls batched).
-  - Approve. Confirm the status line shows "Applied! Digest: 0x…".
-
-- [ ] **(6) Observe before→after in the Hero preview panel.**
-  - Paste the Hero's object id into the "Hero object id" field in the editor.
-  - Click Refresh.
-  - Left column (Raw struct fields): unchanged — same values as at mint time.
-  - Right column (Resolved display): now shows `name` and `description` rendered
-    with the Hero's actual field values substituted.
-  - This visually proves the core Display V2 thesis.
+- `frontend/src/deployment.ts` (CLI path) and `move/.localnet-publication.json` are generated
+  and gitignored. The frontend itself reads live ids from React context (the publish response),
+  not `deployment.ts`.
+- `--force-regenesis` (in `start-localnet.sh`) wipes chain state on each fresh start —
+  re-publish afterward. The committed `hero.move` is the default sample; the bridge regenerates
+  it per design (use step 1's "Reset to sample" to restore the default schema).
