@@ -6,6 +6,8 @@ Object Display is Sui's **template engine for off-chain representation** of on-c
 
 A `Display<T>` object holds named template strings for a type `T`. Templates use `{field_name}` syntax to reference struct fields, which Sui substitutes with actual values at query time.
 
+> **Where resolution happens:** on-chain, a Display stores only the *template strings* (a `VecMap<String, String>`). The actual substitution — reading the object's fields and filling in the template — is done **off-chain** by the indexer / RPC / GraphQL layer, in **both V1 and V2**. That's why the "richer template engine" is fundamentally a client-side change, and why its behaviour (below) lives in the RPC response, not in the Move module.
+
 **Standard properties:**
 
 | Property | Purpose |
@@ -45,10 +47,10 @@ V1 allowed creating **any number** of `Display<T>` objects for the same type. Th
 
 ### 3. Event-based indexing
 
-Display V1 relied on `DisplayVersionUpdatedEvent` emissions for indexers to discover the active Display for a type. This approach:
+Display V1 relied on event emissions (`DisplayCreated` on creation, `VersionUpdated` on a manual version bump) for indexers to discover the active Display for a type. The framework source itself says you'd find a display by *"looking for the first event with `Display<T>`."* This approach:
 - Required scanning historical events to find the correct Display
 - Didn't scale with Sui's evolution toward gRPC and GraphQL infrastructure
-- Made indexing fragile and hard to maintain
+- Made indexing fragile and hard to maintain — and was even incomplete: in V1, field `add`/`edit`/`remove` do **not** bump the version or emit an event (a `TODO` in the source), so the event stream didn't fully reflect field changes
 
 ### 4. No versioning
 
@@ -77,16 +79,16 @@ From the engineering design document, Display V2 aims to:
 Display V2 introduces `DisplayRegistry`, a **shared system object** living at the well-known address `0xd` (similar to how `Clock` lives at `0x6`).
 
 ```
-DisplayRegistry (0xd)
-├── data: Bag
-│   ├── TypeName<Hero>    → Display<Hero> fields
-│   ├── TypeName<Capy>    → Display<Capy> fields
-│   └── TypeName<NFT>     → Display<NFT> fields
+DisplayRegistry (0xd)  ── id: UID
+   └── derived_object::claim(&registry.id, DisplayKey<T>())
+         → Display<Hero>   (address derived from registry UID + type)
+         → Display<Capy>
+         → Display<NFT>
 ```
 
-The registry uses a `Bag` for storage, which allows the data format (both keys and values) to evolve in the future. Display data is stored as dynamic fields keyed by type name.
+Each `Display<T>` is a **derived object**: its address is computed deterministically from the registry's `UID` plus a `DisplayKey<T>` phantom key (`derived_object::claim`). Because the derivation is one-to-one with the type, there is exactly **one** `Display<T>` per type and its ID can be computed offline — no scanning required. (Earlier drafts described this as a `Bag` keyed by `TypeName`; the live mechanism is `derived_object`, not a `Bag`.)
 
-**Why this matters for indexers:** Instead of scanning historical events, clients can compute the deterministic Display ID for any type by looking it up in the live object set — a simple dynamic field query on a known address. No special indexing required.
+**Why this matters for indexers:** Instead of scanning historical events, clients can compute the deterministic Display ID for any type and look it up directly on a known address (`0xd`). No special indexing required.
 
 ### Two objects per Display
 
@@ -231,7 +233,7 @@ let permit = internal::permit<MyType>();
 let (display, cap) = registry.new(permit, ctx);
 ```
 
-The `Permit` pattern is the preferred long-term approach — it proves type ownership through the module system without requiring a Publisher object.
+The `Permit` pattern is an **alternative** creation path: it proves type ownership through the module system without requiring a `Publisher` object. (Both `new_with_publisher` and the `Permit`-based `new` exist in the framework source; the docs don't designate either as canonical, so pick the one that fits your package — use `new_with_publisher` if you already claim a `Publisher`.)
 
 ### Field management
 
@@ -322,7 +324,7 @@ Key points:
 
 ### Automatic system migration
 
-When Display V2 launched, all ~4,500 existing V1 Display objects on mainnet were **automatically migrated** via a system snapshot. Most projects required no action.
+When Display V2 launched, all existing V1 Display objects on mainnet were **automatically migrated** via a system snapshot ("Existing V1 displays were migrated to V2 in a system snapshot migration" — official docs). Most projects required no action. *(The specific count sometimes quoted as "~4,500" is not stated in the primary sources — treat the exact figure as unverified.)*
 
 An on-chain analysis found:
 - No cases of multiple Display objects per type (confirming the design decision)
@@ -336,7 +338,9 @@ An on-chain analysis found:
 | 1. System migration | Automatic snapshot converts all V1 displays to V2 |
 | 2. Claim DisplayCap | Holders burn old V1 Display to claim V2 DisplayCap |
 | 3. Disable V1 | `sui::display::new` becomes non-callable (July 31, 2026) |
-| 4. Second sweep | Catches projects published between Phase 1 and Phase 3 |
+| 4. Second sweep* | Catches projects published between Phase 1 and Phase 3 |
+
+\* The "second sweep" is described in the design materials but not confirmed in the primary launch docs — treat as a stated plan rather than a documented guarantee.
 
 ### How to claim a DisplayCap for a migrated display
 
@@ -366,6 +370,8 @@ Simply use `sui::display_registry` instead of `sui::display`. There's nothing to
 
 V2 is the primary lookup path for all new infrastructure. V1 support is maintained during the transition but will be removed.
 
+> **Verification note:** Only the **JSON-RPC** row is confirmed against a primary source — release notes PR #25360: when `showDisplay` is set, the RPC reads a `Display<T>` from the registry and *"takes precedence over any Display v1 formats."* The **GraphQL** and **gRPC** rows reflect the launch materials but the exact per-interface schema/behaviour was **not independently verified** here; treat them as directional.
+
 ---
 
 ## Timeline
@@ -378,6 +384,8 @@ V2 is the primary lookup path for all new infrastructure. V1 support is maintain
 | **July 31, 2026** | **`sui::display::new` becomes non-callable.** V1 Display creation disabled. |
 | Post-July 2026 | Second migration sweep for in-between projects. V1 GraphQL support deprecated. |
 
+> **Dates are confirmed as *announced*, not as executed.** The v1.68.1 / protocol 118 launch (PR #23710 created the `0xd` system object) is confirmed in the release notes; the **July 31, 2026** `sui::display::new` cutoff is a forward-looking deprecation from the launch blog and could slip.
+
 ### What you need to do
 
 - **New packages:** Use `sui::display_registry` for all Display creation
@@ -386,35 +394,67 @@ V2 is the primary lookup path for all new infrastructure. V1 support is maintain
 
 ---
 
-## Advanced: Richer Templates
+## Templates: what's V1, what's actually new in V2
 
-V2's template engine supports capabilities beyond simple field interpolation:
+> **Common misconception (corrected):** dotted-path access into **inlined nested structs** — `{stats.strength}`, `{a.b.c}` — is **not new in V2.** It already worked in V1. The Move Book documents the V1 syntax verbatim: *"the path is a dot-separated list of field names, starting from the root object in case of nested fields,"* with the V1 example `{metadata.description}`. What V2 genuinely adds is reaching **beyond the object** — following references / dynamic fields to *separate* objects, and traversing collections.
 
-### Nested field access
+### Already in V1 — inlined nested-struct paths
 
-```
-"{bar.val}"           → access a field on a nested struct
-"{bar.baz.val}"       → access multiple levels deep
-"{bar.baz.qux.quy.val}" → arbitrary nesting depth
-```
-
-### JSON formatting
+A `store` struct embedded **by value** inside the object is reachable by a dot-path. This is a V1 capability that V2 keeps:
 
 ```
-"{bar.baz.qux:json}"  → serialize the value as JSON
+"{stats.strength}"          → field of an inlined nested struct
+"{nested.l2.l3.deep}"       → multiple levels deep (verified ≥4 levels)
 ```
 
-### Collection traversal
+*Verified on localnet (Sui 1.x, `display_registry`): `{nested.l2.l3.deep}` resolves through four levels with no depth limit observed.*
 
-Access individual elements within vectors, sets, and maps — no longer limited to top-level scalar fields.
+### Genuinely new in V2 — reach beyond the object
 
-### Dynamic field references
+Per the launch blog, V1 templates *"couldn't reference collections, dynamic fields, or related objects."* V2 can:
 
-Load dynamic fields and related on-chain objects for complex display descriptions.
+- **Dynamic fields & related objects** — load a dynamic field attached to the object, or follow a reference to a *separate* on-chain object and read its fields. *(This is the real "nested objects" feature. The exact template syntax for following a reference is not documented in the sources reviewed and was not reproduced empirically — confirm against the V2 template-syntax docs before relying on a specific form.)*
 
-### Default values
+### Value transforms — `{field:transform}`
 
-Provide fallback content when fields are missing or unset, so displays degrade gracefully.
+A field can be post-processed with a transform suffix. The **complete set** of valid transforms (observed directly from the resolver's own parser error) is:
+
+```
+base64 · bcs · hex · json · str · ts · url
+```
+
+`:json` is the most useful — it serializes a struct or collection that can't render as a bare scalar:
+
+```
+"{stats:json}"   → {"strength":"99","defense":"80"}   (struct → JSON; integers become JSON strings)
+"{nums:json}"    → ["10","20","30"]                    (vector → JSON array)
+```
+
+> There is **no `:default` transform** — the earlier "default values" claim is unsupported. A template referencing a missing field resolves to `null` (see below), not a fallback string.
+
+### How leaf values stringify (verified empirically)
+
+| Field type | Renders as |
+|---|---|
+| `String` | the string |
+| `u8` / `u64` / `u128` | decimal digits (`"7"`, full `u128` value) |
+| `bool` | `"true"` / `"false"` |
+| `address` / `{id}` (UID) | full `0x`-prefixed 64-hex |
+| `vector<u8>` | decoded as a UTF-8/ASCII **string** (`[0x41,0x42,0x43]` → `"ABC"`) |
+| `Option<T>::some(v)` | the inner value (`"99"`) |
+| `vector<u64>` (non-`u8`) | **error** — not directly renderable; use `:json` |
+| a bare struct (no `:json`) | **error** — not directly renderable; use `:json` |
+
+`{vec[i]}` **index access is not supported** (parse error) — "collection traversal" is via `:json` on the whole collection, not element indexing, in this build.
+
+### Missing fields vs invalid expressions (two distinct behaviours)
+
+The V2 RPC returns a Display as `{ data, error }`:
+
+- **Missing field** — `{does_not_exist}` or `{nested.nope}` → the key appears in `data` with value **`null`**.
+- **Invalid expression** — an unrenderable type or bad syntax → the key is **omitted from `data` entirely**, and a message is appended to `display.error` (`{ code: "displayError", error: "<all failures, semicolon-joined>" }`).
+
+This is exactly the `display.error` surface the showcase dapp renders, and it's what makes a typo'd template visible rather than silently blank.
 
 ---
 

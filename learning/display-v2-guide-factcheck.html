@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Display V2 Guide — Fact-Check &amp; Gap Analysis</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f1f1f; --fg-muted: #6e6e6e; --heading-fg: #1a1a1a;
+  --accent: #1976d2; --border: #e0e0e0; --code-bg: #f0f0f0; --code-fg: #6e3700;
+  --pre-bg: #fafafa; --aside-bg: #f5f5f5; --success: #2e7d32; --warning: #9a5b00; --error: #d32f2f;
+  --v1: #9a5b00; --v2: #1976d2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e; --fg: #cccccc; --fg-muted: #9e9e9e; --heading-fg: #e8e8e8;
+    --accent: #4dabf7; --border: #2a2a2a; --code-bg: #2a2a2a; --code-fg: #f0e8d8;
+    --pre-bg: #161616; --aside-bg: #242424; --success: #66bb6a; --warning: #f0c674; --error: #ff7676;
+    --v1: #f0c674; --v2: #4dabf7;
+  }
+}
+@media print {
+  :root { color-scheme: light; --bg:#fff; --fg:#1f1f1f; --fg-muted:#6e6e6e; --heading-fg:#1a1a1a;
+    --accent:#1976d2; --border:#e0e0e0; --code-bg:#f0f0f0; --code-fg:#6e3700; --pre-bg:#fafafa;
+    --aside-bg:#f5f5f5; --success:#2e7d32; --warning:#9a5b00; --error:#d32f2f; --v1:#9a5b00; --v2:#1976d2; }
+  nav.toc { display: none; }
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.55; margin: 0 auto; max-width: 960px; padding: 1.5rem 1.25rem 4rem; }
+h1, h2, h3, h4 { color: var(--heading-fg); line-height: 1.25; }
+h1 { font-size: 1.7rem; margin-bottom: .2rem; }
+h2 { font-size: 1.3rem; margin-top: 2.4rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+h3 { font-size: 1.05rem; margin-top: 1.6rem; }
+a { color: var(--accent); }
+small, figcaption, th { color: var(--fg-muted); }
+code { background: var(--code-bg); color: var(--code-fg); padding: .08em .35em; border-radius: 3px; font-size: .9em; }
+pre { background: var(--pre-bg); border: 1px solid var(--border); padding: .75rem .9rem; border-radius: 6px; overflow-x: auto; }
+pre code { background: none; color: var(--fg); padding: 0; }
+aside { background: var(--aside-bg); border-left: 3px solid var(--accent); padding: .6rem .9rem; border-radius: 0 4px 4px 0; margin: 1rem 0; }
+aside.success { border-left-color: var(--success); }
+aside.warning { border-left-color: var(--warning); }
+aside.error { border-left-color: var(--error); }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; }
+th, td { border: 1px solid var(--border); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+th { background: var(--aside-bg); font-weight: 600; }
+.lede { color: var(--fg-muted); font-size: 1.05rem; }
+nav.toc { background: var(--aside-bg); border: 1px solid var(--border); border-radius: 6px; padding: .6rem 1rem; margin: 1.5rem 0; }
+nav.toc ul { margin: .3rem 0; padding-left: 1.2rem; columns: 2; }
+nav.toc li { margin: .15rem 0; }
+.tag { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .02em; padding: .1em .5em;
+  border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.tag.ok { color: var(--success); }
+.tag.open { color: var(--accent); }
+.tag.warn { color: var(--warning); }
+.tag.bad { color: var(--error); }
+.v1 { color: var(--v1); font-weight: 600; }
+.v2 { color: var(--v2); font-weight: 600; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+.card { border: 1px solid var(--border); border-radius: 6px; padding: .8rem 1rem; }
+.card h3 { margin-top: 0; }
+figure { margin: 1.2rem 0; }
+figcaption { font-size: .85rem; margin-top: .4rem; }
+ul.tight li { margin: .2rem 0; }
+.prov { font-size: .8rem; color: var(--fg-muted); }
+@media (max-width: 720px) {
+  .grid2 { grid-template-columns: 1fr; }
+  nav.toc ul { columns: 1; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Display V2 Guide — Fact-Check &amp; Gap Analysis</h1>
+  <p class="lede">Verification of <code>learning/display-v2-guide.md</code> against primary sources, with the nested-fields hypothesis resolved.</p>
+  <p><small>Method: deep-research harness (5 search angles → 14 primary sources → 25 claims → 3-vote adversarial verify) cross-checked with the <code>display_registry.move</code> framework source and live localnet tests run during the build. 2026-06-29.</small></p>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <strong>Contents</strong>
+  <ul>
+    <li><a href="#verdict">1. Headline verdict</a></li>
+    <li><a href="#nested">2. The nested-fields question</a></li>
+    <li><a href="#behavior">3. Did the behavior change?</a></li>
+    <li><a href="#table">4. Claim-by-claim</a></li>
+    <li><a href="#fixes">5. Fixes for the guide</a></li>
+    <li><a href="#omissions">6. Omissions to add</a></li>
+    <li><a href="#open">7. Open / unverifiable</a></li>
+    <li><a href="#sources">8. Sources</a></li>
+  </ul>
+</nav>
+
+<aside class="note">
+<strong>Provenance legend.</strong>
+<span class="tag ok">CONFIRMED·web</span> primary web source (docs / Move Book / blog / release notes / framework source on GitHub).
+<span class="tag ok">CONFIRMED·session</span> verified first-hand this build — read <code>display_registry.move</code> and/or tested live on localnet.
+<span class="tag open">OPEN</span> not reached by the web research this round (rate-limited or out of scope).
+<span class="tag warn">SOFTEN</span> real but the guide overstates / can't be sourced.
+<span class="tag bad">WRONG</span> needs correction.
+</aside>
+
+<main>
+
+<section id="verdict">
+<h2>1. Headline verdict — your nested hypothesis is half wrong</h2>
+
+<p>Your instinct that "nesting" is a V2 story is <em>partly</em> right, but the guide (and your mental model) conflates two different things. Disentangling them is the single most important correction:</p>
+
+<div class="grid2">
+  <div class="card">
+    <h3><span class="v1">Category 1</span> — inlined nested structs <span class="tag bad">WRONG to call V2</span></h3>
+    <p>A <code>store</code> struct embedded <em>by value</em> inside the object, reached by a dot-path like <code>{stats.strength}</code> or <code>{a.b.c}</code>.</p>
+    <p><strong>This already worked in <span class="v1">V1</span>.</strong> The Move Book documents it verbatim: <em>"The path is a dot-separated list of field names, starting from the root object in case of nested fields,"</em> with the worked V1 example <code>{metadata.description}</code>.</p>
+  </div>
+  <div class="card">
+    <h3><span class="v2">Category 2</span> — references &amp; dynamic fields <span class="tag ok">genuinely V2</span></h3>
+    <p>Following an ID reference or a <em>dynamic field</em> from your object to a <strong>separate on-chain object</strong>, and reading <em>its</em> fields — plus traversing collections.</p>
+    <p><strong>This is the real <span class="v2">V2</span> addition.</strong> The launch blog: V2 templates <em>"can now reach beyond the object itself… access dynamic fields attached to an object and load related objects,"</em> and in V1 builders <em>"couldn't reference collections, dynamic fields, or related objects inside their templates."</em></p>
+  </div>
+</div>
+
+<figure>
+<svg viewBox="0 0 720 220" role="img" aria-label="Diagram contrasting inlined nested struct access (V1) with following a reference to a separate object (V2)" width="100%" style="max-width:720px">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <!-- V1 side -->
+  <text x="20" y="24" fill="var(--v1)" font-weight="700" font-size="14">V1 ✓ — inlined nested struct (one object)</text>
+  <rect x="20" y="40" width="300" height="150" rx="8" fill="none" stroke="currentColor"/>
+  <text x="34" y="64" fill="currentColor" font-size="13" font-family="monospace">Hero (one object)</text>
+  <rect x="40" y="80" width="260" height="90" rx="6" fill="var(--aside-bg)" stroke="var(--v1)"/>
+  <text x="54" y="104" fill="currentColor" font-size="12" font-family="monospace">stats: Stats {</text>
+  <text x="70" y="124" fill="currentColor" font-size="12" font-family="monospace">strength: 99</text>
+  <text x="54" y="144" fill="currentColor" font-size="12" font-family="monospace">}</text>
+  <text x="40" y="186" fill="var(--v1)" font-size="12" font-family="monospace">{stats.strength}</text>
+  <!-- V2 side -->
+  <text x="400" y="24" fill="var(--v2)" font-weight="700" font-size="14">V2 ✓ — follow a reference (two objects)</text>
+  <rect x="400" y="40" width="150" height="120" rx="8" fill="none" stroke="currentColor"/>
+  <text x="414" y="64" fill="currentColor" font-size="13" font-family="monospace">Hero</text>
+  <text x="414" y="92" fill="currentColor" font-size="12" font-family="monospace">sword_id:</text>
+  <text x="414" y="110" fill="currentColor" font-size="12" font-family="monospace">0x… ─┐</text>
+  <line x1="554" y1="100" x2="600" y2="100" stroke="var(--v2)" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="600" y="40" width="110" height="120" rx="8" fill="var(--aside-bg)" stroke="var(--v2)"/>
+  <text x="614" y="64" fill="currentColor" font-size="13" font-family="monospace">Sword</text>
+  <text x="614" y="92" fill="currentColor" font-size="12" font-family="monospace">power: 7</text>
+  <text x="400" y="186" fill="var(--v2)" font-size="12" font-family="monospace">{sword.power} (new)</text>
+</svg>
+<figcaption>The dot-path syntax is the same; what changed is <strong>where the path is allowed to go</strong>. V1 stays inside the object's own bytes; V2 can hop a reference/dynamic-field to another object and into collections.</figcaption>
+</figure>
+
+<p><strong>Bottom line:</strong> your guide's <em>"Advanced: Richer Templates → Nested field access"</em> bullet (the <code>{bar.val}</code>/<code>{bar.baz.val}</code> examples) describes a <span class="v1">V1</span> capability and must <em>not</em> be sold as new in V2. The truly-new bullets in that same section — <em>dynamic field references</em> and <em>collection traversal</em> — are correct as V2 additions.</p>
+</section>
+
+<section id="nested">
+<h2>2. The nested-fields question, with the receipts</h2>
+<table>
+<thead><tr><th>Question</th><th>Answer</th><th>Status</th></tr></thead>
+<tbody>
+<tr>
+  <td>Did <span class="v1">V1</span> support dotted-path access into <em>inlined</em> nested structs (<code>{a.b.c}</code>)?</td>
+  <td><strong>Yes.</strong> Move Book documents it and shows <code>{metadata.description}</code> where <code>Metadata</code> is a <code>store</code> struct embedded by value.</td>
+  <td><span class="tag ok">CONFIRMED·web</span></td>
+</tr>
+<tr>
+  <td>Is following references / dynamic fields to <em>separate</em> objects the new <span class="v2">V2</span> power?</td>
+  <td><strong>Yes.</strong> Launch blog states V1 couldn't reference "collections, dynamic fields, or related objects"; V2 can "load related objects."</td>
+  <td><span class="tag ok">CONFIRMED·web</span></td>
+</tr>
+<tr>
+  <td>Does <span class="v2">V2</span> still resolve inlined <code>{group.field}</code>?</td>
+  <td><strong>Yes</strong> — tested live: a <code>Hero</code> with <code>stats: Stats{strength}</code> and template <code>"STR {stats.strength} / DEF {stats.defense}"</code> resolved to <code>"STR 99 / DEF 80"</code>, <code>display.error: null</code>.</td>
+  <td><span class="tag ok">CONFIRMED·session</span></td>
+</tr>
+</tbody>
+</table>
+
+<aside class="warning">
+<strong>Documentation trap (don't repeat it).</strong> The auto-generated framework reference page <code>docs.sui.io/references/framework/sui_sui/display</code> shows only flat single-token examples (<code>{genes}</code>, <code>{id}</code>) and no dotted path. That is a <em>doc-page gap</em>, <strong>not</strong> evidence V1 lacked nested access. Cite the <em>Move Book</em> for V1 nested support, never the framework page's omission.
+</aside>
+</section>
+
+<section id="behavior">
+<h2>3. You asked: if it was in V1, did the behavior change in V2?</h2>
+<p>For the <strong>inlined <code>{a.b.c}</code> case specifically: no documented behavior change.</strong> Both versions resolve a template by string-interpolating a dot-path over the object's fields; the resolution happens <em>off-chain</em> (indexer / RPC / GraphQL), not in the Move module, in both V1 and V2. V2's engine is a <strong>superset</strong>: same core interpolation, but a "path" may now also cross into dynamic fields, related objects, and collections, plus the guide-claimed <code>:json</code> and default-value forms.</p>
+
+<p>What I could confirm about V2's resolution behavior, live:</p>
+<ul class="tight">
+  <li>Non-<code>String</code> leaves stringify — a <code>u64</code> field rendered as <code>"99"</code> in the output.</li>
+  <li>Multi-token + literal composition in one property works (<code>"STR {stats.strength} / DEF {stats.defense}"</code>).</li>
+  <li>On full success, <code>display.error</code> is <code>null</code>; a template referencing an unresolvable token populates <code>display.error</code> instead (the V2 RPC returns a <code>{ data, error }</code> shape).</li>
+</ul>
+
+<aside class="success">
+<strong>Resolved empirically</strong> (probe package minted on localnet, 18+ templates set, resolved <code>display</code> read back — 2026-06-29):
+<ul class="tight" style="margin:.4rem 0 0">
+  <li><strong>Depth:</strong> <code>{nested.l2.l3.deep}</code> (4 levels) → <code>"1234"</code>. No depth limit observed.</li>
+  <li><strong>Leaf stringification:</strong> <code>bool</code>→<code>"true"</code>/<code>"false"</code>; <code>address</code> &amp; <code>{id}</code>→full <code>0x</code>+64-hex; <code>u128</code>→full decimal; <code>vector&lt;u8&gt;</code>→decoded as text (<code>"ABC"</code>); <code>Option::some(v)</code>→inner value.</li>
+  <li><strong>Not directly renderable:</strong> bare <code>vector&lt;u64&gt;</code> and bare structs → error ("unexpected vector/struct"); use <code>:json</code>.</li>
+  <li><strong>Transforms <code>{x:T}</code> — full allowlist</strong> (from the resolver's own parser error): <code>base64 · bcs · hex · json · str · ts · url</code>. <code>:json</code> serializes structs/vectors to JSON (ints become JSON strings). <strong>No <code>:default</code></strong> → the guide's "default values" feature does not exist.</li>
+  <li><strong>Index access <code>{vec[i]}</code>:</strong> not supported (parse error). "Collection traversal" is via <code>:json</code> on the whole collection, not element indexing.</li>
+  <li><strong>Missing field</strong> (<code>{nope}</code>) → key present in <code>data</code> with value <code>null</code>. <strong>Invalid expression</strong> → key omitted from <code>data</code> + message appended to <code>display.error</code> (<code>{ code:"displayError", error:"…" }</code>). Two distinct behaviours.</li>
+</ul>
+Still open: the exact template syntax for <em>following a reference / dynamic field to a separate object</em> (the headline V2 feature) — not reproduced blind; needs the V2 template-syntax doc.
+</aside>
+</section>
+
+<section id="table">
+<h2>4. Claim-by-claim verification of the guide</h2>
+<table>
+<thead><tr><th>Guide claim</th><th>Verdict</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td><code>DisplayRegistry</code> is a shared system object at <code>0xd</code>; one deterministic <code>Display&lt;T&gt;</code> per type via a derived ID; indexers do a lookup, not an event scan.</td>
+<td>Correct. Derived via <code>derived_object::claim(&amp;registry.id, DisplayKey&lt;T&gt;())</code>; blog + docs confirm one-per-type + deterministic ID.</td><td><span class="tag ok">CONFIRMED·web+session</span></td></tr>
+
+<tr><td>Stored in a <code>Bag</code> keyed by <code>TypeName</code>.</td>
+<td>Partly off. The registry uses <code>derived_object</code> keyed by a <code>DisplayKey&lt;T&gt;</code> phantom type to derive the <code>Display&lt;T&gt;</code> address. The "<code>Bag</code> of <code>TypeName</code>" picture is a reasonable mental model but isn't the literal mechanism — reword to "derived object keyed by type."</td><td><span class="tag warn">SOFTEN</span></td></tr>
+
+<tr><td>V2 = two objects: <strong>shared</strong> <code>Display&lt;T&gt;</code> + <strong>owned</strong> <code>DisplayCap&lt;T&gt;</code>. V1 = one owned <code>Display&lt;T&gt;</code> mutated directly.</td>
+<td>Correct. V2 source: <code>Display&lt;phantom T&gt; has key</code> (shared) + <code>DisplayCap&lt;phantom T&gt; has key, store</code> (owned). V1 source: <code>Display&lt;phantom T: key&gt; has key, store</code>, no cap.</td><td><span class="tag ok">CONFIRMED·session</span> / <span class="tag ok">CONFIRMED·web</span></td></tr>
+
+<tr><td>Four V1 problems: (a) hard Publisher dependency, (b) multiple displays per type / "last event wins", (c) event-based indexing via <code>DisplayVersionUpdatedEvent</code>, (d) no versioning.</td>
+<td>Substantially correct. V1 <code>new&lt;T: key&gt;(pub: &amp;Publisher)</code> asserts <code>is_authorized&lt;T&gt;(pub)</code> (hard Publisher dep); discovery via <code>DisplayCreated</code> + <code>VersionUpdated</code> events; the framework comment literally says find a display by "looking for the first event."</td><td><span class="tag ok">CONFIRMED·web</span></td></tr>
+
+<tr><td>V2 creation: <code>new_with_publisher&lt;T&gt;(registry, publisher, ctx)</code> and a Publisher-free <code>internal::Permit&lt;T&gt;</code> path.</td>
+<td>Both paths are real in the source (<code>new&lt;T&gt;(registry, _: internal::Permit&lt;T&gt;, ctx)</code>). <strong>But</strong> "the Permit pattern is the <em>preferred long-term</em> approach" is editorial — no source backs that framing. Soften to "an alternative that proves type ownership without a Publisher."</td><td><span class="tag ok">CONFIRMED·session</span> (path) / <span class="tag warn">SOFTEN</span> (framing)</td></tr>
+
+<tr><td>V2 field API: <code>set</code> (idempotent), <code>unset</code>, <code>clear</code>, <code>share</code>; no bulk setter; no <code>update_version()</code>.</td>
+<td>Correct. <code>set</code> does contains→remove→insert (idempotent); <code>unset</code> aborts if absent (<code>EFieldDoesNotExist</code>); <code>clear</code> empties; <code>share</code> shares. No bulk setter, no manual version bump.</td><td><span class="tag ok">CONFIRMED·session</span></td></tr>
+
+<tr><td>V2 relaxes the type constraint: V1 needs <code>T: key</code>, V2 allows any <code>T</code>.</td>
+<td>Correct. V1 is <code>Display&lt;phantom T: key&gt;</code> throughout (verified in <code>display.move</code>); V2 is <code>Display&lt;phantom T&gt;</code> with no ability bound (verified in <code>display_registry.move</code>).</td><td><span class="tag ok">CONFIRMED·web</span> (V1) / <span class="tag ok">CONFIRMED·session</span> (V2)</td></tr>
+
+<tr><td>Migration: existing V1 displays auto-migrated by a system snapshot; claim a <code>DisplayCap</code> via Publisher or by burning the V1 display; "don't wrap Display objects."</td>
+<td>Migration mechanism correct (blog + docs: "migrated to V2 through a system snapshot"). Source confirms <code>claim&lt;T: key&gt;(display, legacy, ctx)</code> burns the legacy display, and <code>claim_with_publisher</code>. The specific <strong>"~4,500 displays"</strong> count and <strong>"second migration sweep"</strong> are <em>not</em> in any source found.</td><td><span class="tag ok">CONFIRMED·web</span> (mechanism) / <span class="tag warn">SOFTEN</span> (count, sweep)</td></tr>
+
+<tr><td>Timeline: V2 launched ~April 2026 with Sui v1.68; <code>sui::display::new</code> non-callable after July 31 2026.</td>
+<td>Confirmed: release notes show <strong>v1.68.1 / protocol 118 / PR #23710</strong> "Enables Display V2 (0xd system object is created)"; blog states the July 31 2026 cutoff. Note it is a <em>forward-dated plan</em> (today is 2026-06-29) and could slip.</td><td><span class="tag ok">CONFIRMED·web</span></td></tr>
+
+<tr><td>RPC: JSON-RPC <code>showDisplay</code> reads V2 with precedence; GraphQL + gRPC support V2; gRPC didn't support V1.</td>
+<td>JSON-RPC part confirmed (PR #25360: registry <code>Display&lt;T&gt;</code> is the source of truth, "takes precedence over any Display v1 formats"). The <strong>GraphQL output/errors JSON shape and the "gRPC supports V2 but not V1" claim were NOT verifiable</strong> this round — leave them hedged.</td><td><span class="tag ok">CONFIRMED·web</span> (JSON-RPC) / <span class="tag open">OPEN</span> (GraphQL, gRPC)</td></tr>
+
+<tr><td>Richer template features: <code>{a.b.val}</code> nesting, <code>{x:json}</code>, collection traversal, dynamic-field references, defaults.</td>
+<td>Mixed: <code>{a.b.val}</code> is <span class="v1">V1</span> (see §1); dynamic-field + collection + related-object access are real <span class="v2">V2</span> additions (blog). <code>{x:json}</code> formatting and default/fallback values are <strong>plausible but unconfirmed</strong> — no primary source found for the exact syntax.</td><td><span class="tag bad">WRONG</span> (nesting=V2) / <span class="tag ok">CONFIRMED·web</span> (refs) / <span class="tag open">OPEN</span> (<code>:json</code>, defaults)</td></tr>
+</tbody>
+</table>
+
+<aside class="note"><strong>On the research's "refuted" list:</strong> nine claims came back <code>0-0 (3 abstain)</code> — these were <em>rate-limited verifier calls</em>, not genuine refutations. Several (dynamic-field access, collection access) are in fact <em>true</em> per the confirmed blog evidence. Read them as "not re-verified this round," never as "false."</aside>
+</section>
+
+<section id="fixes">
+<h2>5. Concrete fixes for <code>display-v2-guide.md</code></h2>
+<ol>
+  <li><strong>"Advanced: Richer Templates → Nested field access"</strong> — relabel. Move the <code>{bar.val}</code> / <code>{bar.baz.val}</code> dotted-path examples out of the "new in V2" framing; note explicitly that <span class="v1">V1 already supported inlined nested-struct dot-paths</span>. Keep <em>dynamic field references</em> and <em>collection traversal</em> as the genuine V2 nesting story (following references to <em>separate</em> objects).</li>
+  <li><strong>Architecture → "stored in a <code>Bag</code> keyed by <code>TypeName</code>"</strong> — reword to a derived-object model: the <code>Display&lt;T&gt;</code> lives at an address <em>derived</em> from the registry + a <code>DisplayKey&lt;T&gt;</code>, which is what makes the ID deterministic.</li>
+  <li><strong>"Permit pattern is the preferred long-term approach"</strong> — soften to "an alternative creation path that proves type ownership through the module system without a Publisher." Don't assert it's preferred.</li>
+  <li><strong>"~4,500 existing V1 Display objects"</strong> and <strong>"second migration sweep"</strong> — either source them or hedge ("a few thousand", "a planned follow-up sweep"). Neither figure is in the primary sources.</li>
+  <li><strong>RPC table</strong> — keep the JSON-RPC row (sourced). Add a hedge to the GraphQL/gRPC rows ("per the launch materials; exact schema not independently verified here").</li>
+  <li><strong>Timeline</strong> — the dates are confirmed as <em>announced</em>; add a one-line caveat that the July 31 2026 cutoff is a forward-looking deprecation that could move.</li>
+  <li><strong>V1 event nuance (optional, strengthens the "Why V2" case)</strong> — in V1, field <code>add</code>/<code>edit</code>/<code>remove</code> do <em>not</em> bump the version or emit an event (a TODO in the framework source), so even V1's event-discovery story was incomplete. Good ammunition for problem (c).</li>
+</ol>
+</section>
+
+<section id="omissions">
+<h2>6. Omissions worth adding</h2>
+<ul>
+  <li><strong>The exact V1 vs V2 struct definitions, side by side</strong> — readers grok the delta instantly: <code>Display&lt;phantom T: key&gt; { id, fields, version: u16 }</code> (V1, owned, self-versioned) vs <code>Display&lt;phantom T&gt; { id, fields, cap_id: Option&lt;ID&gt; }</code> + separate <code>DisplayCap&lt;T&gt;</code> (V2, shared + cap).</li>
+  <li><strong>Off-chain resolution.</strong> Make explicit that template resolution happens off-chain (indexer / RPC / GraphQL), not in the Move module — in <em>both</em> versions. This is why the "richer engine" is a client-side change, and why behavioral edge-cases (§3) aren't in the Move source.</li>
+  <li><strong>The V2 <code>{ data, error }</code> response shape</strong> — V2 RPC returns resolved fields in <code>data</code> and per-field failures in <code>error</code> (your playground already surfaces this). A nice contrast with V1.</li>
+  <li><strong>The cap-gating security upgrade</strong> — your guide hints at it; state it plainly: V1's <code>Display</code> has <code>store</code> and was mutated by whoever held it (a shared/owned foot-gun); V2 splits read (shared <code>Display</code>) from write (owned <code>DisplayCap</code>).</li>
+  <li><strong>Open items for a follow-up pass</strong> (see §7) — the <code>:json</code>/defaults syntax, GraphQL/gRPC specifics, and nesting depth/missing-field semantics are genuinely unconfirmed; flag rather than assert.</li>
+</ul>
+</section>
+
+<section id="open">
+<h2>7. Open / unverifiable — do not assert without a source</h2>
+<ul class="tight">
+  <li><span class="tag ok">RESOLVED</span> Transform syntax: full allowlist is <code>base64 · bcs · hex · json · str · ts · url</code>; <code>:json</code> works; <strong>no <code>:default</code></strong> (default-values feature does not exist). <em>(empirical)</em></li>
+  <li><span class="tag ok">RESOLVED</span> Nesting depth (≥4, no cap observed); leaf-type stringification; missing-field (<code>null</code>) vs invalid-expression (omitted + <code>display.error</code>); collection access is <code>:json</code>, not <code>{vec[i]}</code> indexing. <em>(empirical — see §3)</em></li>
+  <li><span class="tag open">OPEN</span> Exact template syntax for following a <em>reference / dynamic field to a separate object</em> (the headline V2 capability) — not reproduced blind; needs the V2 template-syntax doc.</li>
+  <li><span class="tag open">OPEN</span> GraphQL <code>Display</code> output/errors JSON shape; whether gRPC resolves V2 but not V1.</li>
+  <li><span class="tag open">OPEN</span> Gas/perf cost of loading related objects during resolution; V2 template-language <em>versioning</em> mechanism.</li>
+  <li><span class="tag warn">SOFTEN</span> "~4,500 migrated displays"; "second migration sweep" timeline.</li>
+  <li><span class="tag warn">SOFTEN</span> July 31 2026 cutoff — announced, forward-dated, could slip.</li>
+</ul>
+</section>
+
+<section id="sources">
+<h2>8. Sources</h2>
+<p>All primary. Framework Move source and the Move Book are the ground truth; the launch blog is authoritative but partly marketing-framed, so each load-bearing V2 claim is cross-checked against docs.sui.io and the release notes.</p>
+<ul class="tight">
+  <li>Move Book — Object Display (V1 template syntax, nested dot-paths): <code>move-book.com/programmability/display/</code></li>
+  <li>Sui framework <code>display.move</code> (V1 source): <code>github.com/MystenLabs/sui/.../sources/display.move</code></li>
+  <li>Sui framework <code>display_registry.move</code> (V2 source) — read first-hand this session.</li>
+  <li>Display V2 launch blog: <code>blog.sui.io/display-v2-mainnet/</code></li>
+  <li>Official docs — Object Display standard / overview: <code>docs.sui.io/standards/display</code>, <code>docs.sui.io/develop/objects/display/</code></li>
+  <li>Sui release notes (v1.68.1 / protocol 118 / PR #23710; JSON-RPC PR #25360): <code>docs.sui.io/references/release-notes</code></li>
+  <li>Framework reference (the page with the nested-example <em>gap</em> — don't cite for V1 limits): <code>docs.sui.io/references/framework/sui_sui/display</code></li>
+</ul>
+</section>
+
+</main>
+
+<footer>
+<hr style="border:none;border-top:1px solid var(--border);margin:2rem 0 1rem">
+<p><small>Generated for the <code>display-v2-forum</code> learning material. Findings combine an automated deep-research pass (web primary sources, adversarial verification) with first-hand reading of <code>display_registry.move</code> and live localnet tests. Confidence is highest on framework-source and Move-Book facts; lowest on RPC-schema and richer-syntax specifics flagged <span class="tag open">OPEN</span>.</small></p>
+</footer>
+</body>
+</html>
