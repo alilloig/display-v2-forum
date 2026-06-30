@@ -152,6 +152,10 @@ ul.tight li { margin: .2rem 0; }
 </figure>
 
 <p><strong>Bottom line:</strong> your guide's <em>"Advanced: Richer Templates → Nested field access"</em> bullet (the <code>{bar.val}</code>/<code>{bar.baz.val}</code> examples) describes a <span class="v1">V1</span> capability and must <em>not</em> be sold as new in V2. The truly-new bullets in that same section — <em>dynamic field references</em> and <em>collection traversal</em> — are correct as V2 additions.</p>
+
+<aside class="success">
+<strong>Boundary, sharpened (tested both standards on localnet):</strong> the line is <strong>not "struct vs object" — it's by value vs by reference.</strong> A <strong>wrapped object</strong> — a <code>key, store</code> struct (a first-class object with its own <code>UID</code>) embedded <em>by value</em> inside another object — is just inlined bytes, so its fields <strong>and its <code>{inner.id}</code></strong> resolve under <span class="v1">V1</span> <em>and</em> <span class="v2">V2</span>, identically (verified: <code>{inner.val}</code>→<code>"777"</code>, <code>{inner.id}</code>→the wrapped UID). What V2 adds is following a <strong>reference / dynamic field</strong> to a <em>separately-stored</em> object — one that is <em>not</em> embedded by value. (Note: a <code>key</code>-only struct can't even be a field — a field type needs <code>store</code> — so the embeddable case is always <code>key, store</code>.)
+</aside>
 </section>
 
 <section id="nested">
@@ -202,6 +206,7 @@ ul.tight li { margin: .2rem 0; }
   <li><strong>Transforms <code>{x:T}</code> — full allowlist</strong> (from the resolver's own parser error): <code>base64 · bcs · hex · json · str · ts · url</code>. <code>:json</code> serializes structs/vectors to JSON (ints become JSON strings). <strong>No <code>:default</code></strong> → the guide's "default values" feature does not exist.</li>
   <li><strong>Index access <code>{vec[i]}</code>:</strong> not supported (parse error). "Collection traversal" is via <code>:json</code> on the whole collection, not element indexing.</li>
   <li><strong>Missing field</strong> (<code>{nope}</code>) → key present in <code>data</code> with value <code>null</code>. <strong>Invalid expression</strong> → key omitted from <code>data</code> + message appended to <code>display.error</code> (<code>{ code:"displayError", error:"…" }</code>). Two distinct behaviours.</li>
+  <li><strong>V1 vs V2 resolver deltas</strong> (ran the same type under both): V1 has <strong>no transforms</strong> (any <code>:json</code> → "Failed to parse format"); and in V1 <strong>one bad format string blanks the entire <code>display.data</code></strong> (returns empty + error), whereas V2 isolates the failure to the offending key. V2 is a strictly better resolver.</li>
 </ul>
 Still open: the exact template syntax for <em>following a reference / dynamic field to a separate object</em> (the headline V2 feature) — not reproduced blind; needs the V2 template-syntax doc.
 </aside>

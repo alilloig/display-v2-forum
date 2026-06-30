@@ -396,24 +396,28 @@ V2 is the primary lookup path for all new infrastructure. V1 support is maintain
 
 ## Templates: what's V1, what's actually new in V2
 
-> **Common misconception (corrected):** dotted-path access into **inlined nested structs** — `{stats.strength}`, `{a.b.c}` — is **not new in V2.** It already worked in V1. The Move Book documents the V1 syntax verbatim: *"the path is a dot-separated list of field names, starting from the root object in case of nested fields,"* with the V1 example `{metadata.description}`. What V2 genuinely adds is reaching **beyond the object** — following references / dynamic fields to *separate* objects, and traversing collections.
+> **Common misconception (corrected):** dotted-path access into **inlined** nested values — `{stats.strength}`, `{a.b.c}` — is **not new in V2.** It already worked in V1. The Move Book documents the V1 syntax verbatim: *"the path is a dot-separated list of field names, starting from the root object in case of nested fields,"* with the V1 example `{metadata.description}`. The real boundary is **not "struct vs object"** — it is **by value vs by reference**: anything stored *inline* in the object's own bytes is V1-resolvable; what V2 adds is reaching a *separately-stored* object via a **reference / dynamic field**.
 
-### Already in V1 — inlined nested-struct paths
+### Already in V1 — anything inlined by value (structs *and* wrapped objects)
 
-A `store` struct embedded **by value** inside the object is reachable by a dot-path. This is a V1 capability that V2 keeps:
+If a value lives **inside the object's own bytes**, a dot-path reaches it — and this was already true in V1. That includes:
+
+- a plain `store` struct embedded by value (`{stats.strength}`), and
+- a **wrapped object** — a `key, store` struct (a first-class object with its own `UID`) embedded *by value* inside another object. Its fields, **including its `id`**, resolve exactly like a plain struct.
 
 ```
-"{stats.strength}"          → field of an inlined nested struct
+"{stats.strength}"          → field of an inlined store struct
 "{nested.l2.l3.deep}"       → multiple levels deep (verified ≥4 levels)
+"{inner.val}"  "{inner.id}" → field (and UID) of a wrapped key+store object
 ```
 
-*Verified on localnet (Sui 1.x, `display_registry`): `{nested.l2.l3.deep}` resolves through four levels with no depth limit observed.*
+*Verified on localnet: a `Hero`-like `Outer { inner: Inner }` where `Inner has key, store` resolved `{inner.val}` → `"777"` and `{inner.id}` → the wrapped object's address — under **both V1 (`sui::display`) and V2 (`display_registry`)**, identically. The `key` ability is irrelevant to inlined resolution; embedding by value inlines the bytes.*
 
-### Genuinely new in V2 — reach beyond the object
+### Genuinely new in V2 — reach a *separate* object by reference
 
-Per the launch blog, V1 templates *"couldn't reference collections, dynamic fields, or related objects."* V2 can:
+The V1-vs-V2 line is whether the value is **inlined** (by value, ✓ in V1) or behind a **reference** to a separately-stored object. Per the launch blog, V1 templates *"couldn't reference collections, dynamic fields, or related objects."* V2 can:
 
-- **Dynamic fields & related objects** — load a dynamic field attached to the object, or follow a reference to a *separate* on-chain object and read its fields. *(This is the real "nested objects" feature. The exact template syntax for following a reference is not documented in the sources reviewed and was not reproduced empirically — confirm against the V2 template-syntax docs before relying on a specific form.)*
+- **Dynamic fields & related objects** — load a dynamic field attached to the object, or follow an **ID reference** to a *separate* on-chain object (one **not** embedded by value) and read its fields. *(This is the real "nested objects" feature. The exact template syntax for following a reference is not documented in the sources reviewed and was not reproduced empirically — confirm against the V2 template-syntax docs before relying on a specific form.)*
 
 ### Value transforms — `{field:transform}`
 
@@ -455,6 +459,18 @@ The V2 RPC returns a Display as `{ data, error }`:
 - **Invalid expression** — an unrenderable type or bad syntax → the key is **omitted from `data` entirely**, and a message is appended to `display.error` (`{ code: "displayError", error: "<all failures, semicolon-joined>" }`).
 
 This is exactly the `display.error` surface the showcase dapp renders, and it's what makes a typo'd template visible rather than silently blank.
+
+### V1 vs V2 resolver behaviour (verified by running both)
+
+Running the *same* type under both standards on localnet surfaced two concrete behavioural upgrades in V2's resolver:
+
+| Behaviour | V1 (`sui::display`) | V2 (`display_registry`) |
+|---|---|---|
+| **Value transforms** (`{x:json}`, `:hex`, …) | **None** — any transform is a parse error: *"Failed to parse format for display field"* | Supported: `base64 · bcs · hex · json · str · ts · url` |
+| **One bad format string** | **Poisons the whole display** — `data` comes back empty and only the error is returned | **Isolated** — only the offending key is dropped; every other field still resolves |
+| Inlined dot-paths (structs + wrapped objects) | ✓ resolves | ✓ resolves (identical) |
+
+So beyond the headline registry/indexing changes, V2 also brought a strictly better template engine: more transforms, and fault isolation so one typo no longer blanks an entire object's display.
 
 ---
 
