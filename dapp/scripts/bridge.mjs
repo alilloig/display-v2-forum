@@ -23,7 +23,9 @@ const DEPLOYMENT_TS = join(HERE, '..', 'frontend', 'src', 'deployment.ts');
 
 const PORT = 8787;
 const REGISTRY_ID = '0xd';
-const ALLOW_ORIGIN = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+// Any localhost origin (the dev server's port can vary, e.g. when 5173 is taken).
+// This is a localhost-only dev tool, so reflecting any loopback origin is fine.
+const ALLOW_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const ADDR_RE = /^0x[0-9a-fA-F]{1,64}$/;
 
 /** Run a sui command, returning parsed JSON stdout. Throws { stage, error } on failure. */
@@ -91,7 +93,7 @@ function publish(schema, ownerAddress) {
 
 function cors(req, res) {
   const origin = req.headers.origin;
-  if (ALLOW_ORIGIN.includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
+  if (origin && ALLOW_ORIGIN.test(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
