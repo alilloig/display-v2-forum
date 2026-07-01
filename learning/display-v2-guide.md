@@ -35,26 +35,24 @@ When a wallet queries a `Hero` object with `name: "Alice"` and `blob_id: "abc123
 
 ## Why V2?
 
-The original Display (V1) had four fundamental problems identified by the Sui engineering team:
+The launch blog frames the **four core V1 problems** V2 set out to fix as:
 
-### 1. Publisher dependency
+1. **Unpredictable resolution** — discovery relied on scanning historical events, which doesn't scale.
+2. **Multiple displays per type** — any number of `Display<T>` could coexist for one type, with ambiguous "last one wins" semantics.
+3. **Limited templating** — V1 templates couldn't reference collections, dynamic fields, or related (separate) objects.
+4. **Infrastructure incompatibility** — the event-discovery model didn't fit Sui's move to gRPC / GraphQL.
 
-Display V1 requires a `Publisher` object to operate. If a package was published without claiming the Publisher in `init()`, developers could **never** create Display objects for their types.
+The guide originally listed a *different* four (Publisher dependency · multiple-per-type · event indexing · no versioning). Those are **additional design motivations** — real, but not the blog's headline list. The sections below cover all of them; just don't present the alt list as "the official four."
 
-### 2. Multiple displays per type
+### Additional design motivations
 
-V1 allowed creating **any number** of `Display<T>` objects for the same type. This made no sense — which one should wallets use? The last event emitted by any Display object was treated as active, creating ambiguity.
+**Publisher dependency.** V1 requires a `Publisher` to operate. If a package was published without claiming its Publisher in `init()`, developers could **never** create Display objects for their types. (V2's `Permit` path removes this — see Creation.)
 
-### 3. Event-based indexing
+**Multiple displays per type.** V1 allowed **any number** of `Display<T>` objects for the same type — which one should wallets use? The last event emitted by any of them was treated as active, creating ambiguity.
 
-Display V1 relied on event emissions (`DisplayCreated` on creation, `VersionUpdated` on a manual version bump) for indexers to discover the active Display for a type. The framework source itself says you'd find a display by *"looking for the first event with `Display<T>`."* This approach:
-- Required scanning historical events to find the correct Display
-- Didn't scale with Sui's evolution toward gRPC and GraphQL infrastructure
-- Made indexing fragile and hard to maintain — and was even incomplete: in V1, field `add`/`edit`/`remove` do **not** bump the version or emit an event (a `TODO` in the source), so the event stream didn't fully reflect field changes
+**Event-based indexing.** V1 relied on event emissions (`DisplayCreated` on creation, `VersionUpdated` on a manual version bump) for indexers to discover the active Display. The framework source itself says you'd find a display by *"looking for the first event with `Display<T>`."* This scanning approach didn't scale, and was even **incomplete**: in V1, field `add`/`edit`/`remove` do **not** bump the version or emit an event (a `TODO` in the source), so the event stream didn't fully reflect field changes.
 
-### 4. No versioning
-
-With a V2 template engine on the way (supporting richer syntax), there was no mechanism to version Display templates or evolve the system.
+**No template versioning.** With a richer V2 template engine on the way, V1 had no mechanism to version the template *language* or evolve the system.
 
 ---
 
@@ -67,7 +65,7 @@ From the engineering design document, Display V2 aims to:
 3. **Use `internal::Permit`** — support type-based access without Publisher
 4. **Add versioning** — support template language updates
 5. **Snapshot migration** — migrate all existing displays automatically
-6. **Relax type constraint** — remove the `T: key` requirement (any `T` works)
+6. **Relax type constraint** — remove the `T: key` requirement (any `T` works). Concretely, V1 is `new<T: key>(pub: &Publisher, …)` while V2 is `new<phantom T>(…)` — no ability bound on `T`.
 7. **Deprecate V1** — mark previous functions and Display type as deprecated
 
 ---
@@ -108,7 +106,9 @@ This separation means:
 
 ## V1 vs V2: Code Comparison
 
-### Display V1 — everything in `init()`
+> **Framing caveat.** The example below shows V1 built entirely inside `init()`, which is common in tutorials — but it is **not** the production norm. What `init()` *must* do is claim the **Publisher** (the one-time witness only exists in `init`). The **Display itself is usually created in a later step** — a separate `public` function, or an off-chain PTB after publish. Two production packages do exactly this: **suins-contracts** builds its V1 Display in a TypeScript PTB (`0x2::display::new` + `add_multiple` + `update_version`) post-publish; **sui-groups** creates it in a `public` setup function doc-commented *"Call this after init to set up Display."* So the real V1-vs-V2 contrast is not "in-init vs separate" — it's that **V2 *must* be split out** (see below), whereas V1 *may* be inlined but usually isn't.
+
+### Display V1 — creating the Display (shown inline in `init()` for brevity)
 
 ```move
 module display::hero;
@@ -206,7 +206,7 @@ entry fun create_display(
 
 **Key differences:**
 - `init()` only claims Publisher — no Display creation
-- Display created in a **separate entry function** because `DisplayRegistry` is a shared object (can't be received in `init()`)
+- Display created in a **separate entry function** because it needs `&mut DisplayRegistry` (a shared object), and `init()` takes **no object inputs** — only the one-time witness and `&mut TxContext`. This is the real reason V2 must be split out of `init` (not that shared objects are "received").
 - Returns a tuple: `(Display<T>, DisplayCap<T>)`
 - Fields set individually with `display.set(&cap, key, value)`
 - No `update_version()` needed — registry handles indexing
@@ -226,14 +226,29 @@ let (display, cap) = display_registry::new_with_publisher<Hero>(
     registry, publisher, ctx,
 );
 ```
+`new_with_publisher` **validates the Publisher against `T`** — its body asserts `publisher.from_package<T>()` (error `ENotValidPublisher`). You can't pass an arbitrary Publisher; it must belong to `T`'s package.
 
-**2. With internal::Permit (no Publisher needed):**
+**2. With `std::internal::Permit` (no Publisher needed):**
 ```move
-let permit = internal::permit<MyType>();
-let (display, cap) = registry.new(permit, ctx);
+module display::hero;
+
+use sui::display_registry::DisplayRegistry;
+use std::internal;
+
+public struct Hero has key, store { id: UID, name: String, blob_id: String }
+
+// This fn lives INSIDE hero's module → it's allowed to mint Permit<Hero>.
+entry fun create_display(registry: &mut DisplayRegistry, ctx: &mut TxContext) {
+    let (mut display, cap) = registry.new(internal::permit<Hero>(), ctx);
+    display.set(&cap, b"name".to_string(), b"{name}".to_string());
+    display.share();
+    transfer::public_transfer(cap, ctx.sender());
+}
 ```
 
-The `Permit` pattern is an **alternative** creation path: it proves type ownership through the module system without requiring a `Publisher` object. (Both `new_with_publisher` and the `Permit`-based `new` exist in the framework source; the docs don't designate either as canonical, so pick the one that fits your package — use `new_with_publisher` if you already claim a `Publisher`.)
+**The key constraint (easy to miss):** `internal::permit<T>()` compiles **only inside the module that defines `T`** — the compiler lets only `T`'s own module construct a `Permit<T>`. *That* is what makes it proof of type ownership without a `Publisher` object; it is not a free-floating call you can make from anywhere. (Module path is **`std::internal`**. `Permit` is also the foundation for other type-ownership permits Sui may add, e.g. a `TransferPermit`.)
+
+The `Permit` pattern is an **alternative** creation path — the docs don't designate either it or `new_with_publisher` as canonical. Use `new_with_publisher` if you already claim a `Publisher`; use the `Permit` path to avoid needing one at all (only possible from inside `T`'s module).
 
 ### Field management
 
@@ -326,7 +341,7 @@ Key points:
 
 When Display V2 launched, all existing V1 Display objects on mainnet were **automatically migrated** via a system snapshot ("Existing V1 displays were migrated to V2 in a system snapshot migration" — official docs). Most projects required no action. *(The specific count sometimes quoted as "~4,500" is not stated in the primary sources — treat the exact figure as unverified.)*
 
-An on-chain analysis found:
+An on-chain analysis (per the internal design doc — *not* stated in the public launch blog, so treat as unverified against primary sources) reportedly found:
 - No cases of multiple Display objects per type (confirming the design decision)
 - No on-chain Display dependencies (confirming backward compatibility is safe to drop)
 - Some projects wrap Publisher + Display in manager objects
@@ -364,7 +379,7 @@ Simply use `sui::display_registry` instead of `sui::display`. There's nothing to
 
 | Interface | V1 Display | V2 Display |
 |-----------|-----------|-----------|
-| JSON-RPC (`showDisplay`) | Supported until Q2 2026 deprecation | Supported (primary lookup) |
+| JSON-RPC (`showDisplay`) | Supported until the July 2026 deprecation | Supported (primary lookup) |
 | GraphQL | Supported (will be deprecated after migration period) | Supported (primary) |
 | gRPC | Not supported | Supported |
 
@@ -379,8 +394,8 @@ V2 is the primary lookup path for all new infrastructure. V1 support is maintain
 | Date | Event |
 |------|-------|
 | April 2026 | Display V2 launches with Sui v1.68. `DisplayRegistry` system object created at `0xd`. |
-| April 2026 | System snapshot migrates all ~4,500 V1 displays automatically. |
-| Q2 2026 | JSON-RPC deprecated entirely. |
+| April 2026 | System snapshot migrates all existing V1 displays automatically. |
+| July 2026 | JSON-RPC display support deprecated (tied to the V1 sunset). |
 | **July 31, 2026** | **`sui::display::new` becomes non-callable.** V1 Display creation disabled. |
 | Post-July 2026 | Second migration sweep for in-between projects. V1 GraphQL support deprecated. |
 
