@@ -27,48 +27,53 @@ arithmetic); the on-chain-verifiable part is the live `inventory` projection.
 ## The nine differences
 
 The bottom panel narrates all nine canonical Display V1→V2 differences (source:
-`learning/display-v2-guide.md`), highlighting the one each step demonstrates. See
-`src/lessons.ts`.
+`learning/display-v2-guide.md`) across a 9-step app cycle (connect → mint → equip ×3 →
+unequip ×3); at each step only the cards that step demonstrates are shown. See
+`src/lessons.ts` for the phase → differences mapping.
 
 > **Transport note:** the guide says JSON-RPC can't resolve load operators — but on
 > `sui 1.69.2` localnet, `showDisplay` **does** resolve `=>`, so this dapp's live
 > projection works over plain JSON-RPC today. gRPC / GraphQL are still the recommended
 > SDK 2.0 clients (JSON-RPC is deprecated), which is how the transport lesson is framed.
 
-## Run it (localnet)
+## Run it (devnet)
 
 ```bash
-# 1. Local Sui network (idempotent) — from the repo:
-bash dapp/scripts/start-localnet.sh
-
-# 2. Publish the fixed hero_forge package + create the 4 Displays, write deployment.ts:
+# 1. Point the sui CLI at devnet with a funded active address, then publish the
+#    hero_forge package + create the 4 Displays, writing src/deployment.ts:
 cd dapp/hero-frontend
 pnpm install
-pnpm publish:localnet
+pnpm publish:devnet
 
-# 3. Dev server (port 5175):
+# 2. Dev server (port 5175):
 pnpm dev
 ```
 
-Open `http://localhost:5175`. Use the **Dev key** signer (funded from the faucet) for
-hands-free localnet signing, or connect a wallet. Mint a Hero, then forge items and watch
-the Display projection and composite sprite update.
+Open `http://localhost:5175` and connect a Sui wallet set to devnet (fund it from the
+devnet faucet: `sui client faucet --address <addr>`). Signing is wallet-only. Mint a
+Hero, then forge items and watch the Display projection and composite sprite update.
+
+For offline development, `pnpm publish:localnet` runs the same flow against a local
+validator; the frontend follows whichever network `deployment.ts` records (the gRPC
+client config in `src/dapp-kit.ts` derives from it).
 
 ## Layout
 
 | Path | What |
 |---|---|
 | `../hero-move/` | The fixed `hero_forge::hero` Move package (Hero + item structs, equip/unequip via DOFs, `create_displays`). |
-| `../hero-scripts/publish-localnet.sh` | Build + `test-publish` + `create_displays` + write `src/deployment.ts`. |
-| `src/chain.ts` | Reads the owned Hero (content + resolved Display + attached DOFs) and builds mint/equip/unequip PTBs. |
+| `../hero-scripts/publish-common.sh` | Shared publish core: build + `test-publish` + `create_displays` + write `src/deployment.ts`. |
+| `../hero-scripts/publish-devnet.sh` / `publish-localnet.sh` | Thin per-network wrappers around the common core. |
+| `src/chain.ts` | Reads the owned Hero (content + resolved Display + attached DOFs) via the Core API, builds mint/equip/unequip PTBs, and normalizes wallet signing. |
 | `src/items.ts` | The fixed catalog (stats + `summary` strings that the Display projects). |
 | `src/sprites.ts` | Deterministic equipped-set → composite sprite (8 pre-rendered PNGs in `public/sprites/`). |
-| `src/lessons.ts` | The 9 V1→V2 differences + transport note. |
-| `src/components/` | `HeroStage`, `Armory`, `LessonPanel`, `SignerBar`. |
+| `src/lessons.ts` | The 9 V1→V2 differences + transport note, the 9-step cycle mapping, and `deriveCycle`. |
+| `src/components/` | `HeroStage`, `Armory`, `LessonPanel`. |
 
 ## Testnet
 
-The core showcase runs on localnet. For a public deploy, switch `src/dapp-kit.ts` to a
-testnet client (gRPC via `@mysten/sui/grpc` is the SDK 2.0 recommendation), host the
-sprites on Walrus, and add a testnet publish path. See the Move package and
-`publish-localnet.sh` as the template.
+The definitive contracts will live on testnet. When that lands: publish with
+`sui client publish` (persistent deployments are recorded in `Published.toml`, unlike
+the ephemeral devnet/localnet `test-publish` flow), add a `publish-testnet.sh` wrapper,
+and host the sprites on Walrus. The frontend needs no code change — `deployment.ts`
+drives the network.

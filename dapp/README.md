@@ -51,7 +51,7 @@ cards that step demonstrates are shown (the rest stay hidden until their step). 
 | `hero-frontend/src/items.ts` | The fixed item catalog (stats + `summary` strings the Display projects). |
 | `hero-frontend/src/sprites.ts` | Deterministic equipped-set → composite sprite (pre-rendered PNGs in `public/sprites/`). |
 | `hero-frontend/src/lessons.ts` | The 9 V1→V2 differences + transport note. |
-| `hero-frontend/src/components/` | `HeroStage`, `Armory`, `LessonPanel`, `SignerBar`. |
+| `hero-frontend/src/components/` | `HeroStage`, `Armory`, `LessonPanel`. |
 
 ## Prerequisites
 

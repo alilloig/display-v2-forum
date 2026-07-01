@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+: "${NETWORK:?publish-common.sh must be sourced from a publish-<network>.sh wrapper}"
+: "${SCRIPT_DIR:?publish-common.sh must be sourced from a publish-<network>.sh wrapper}"
+
 DAPP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MOVE_DIR="${DAPP_DIR}/hero-move"
 FRONTEND_SRC="${DAPP_DIR}/hero-frontend/src"
