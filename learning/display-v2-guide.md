@@ -26,16 +26,16 @@ Everything else — how you *create* a Display, how it's *stored*, how indexers 
 |-----------|-----------------------------|--------------------------------------|
 | **Authorization** | `Publisher` object required | `Publisher` **or** `internal::Permit` (no Publisher needed) |
 | **Where you create it** | Inside `init()` | Separate `entry` function (registry is shared, can't be received in `init`) |
-| **Discovery / indexing** | Scan `DisplayVersionUpdatedEvent` history | Deterministic lookup in `DisplayRegistry` at `0xd` |
+| **Discovery / indexing** | Scan `DisplayCreated` / `VersionUpdated` event history | Deterministic derived-object lookup off `DisplayRegistry` at `0xd` |
 | **Cardinality** | Any number of `Display<T>` per type | Exactly **one** per type, enforced |
 | **Object model** | One owned `Display<T>` object | Shared `Display<T>` + owned `DisplayCap<T>` |
 | **Type constraint** | `T: key` required | Any `T` (constraint relaxed) |
 | **Versioning** | None | Versioned template language |
 | **Field API** | Bulk `new_with_fields(keys, values)` + `update_version()` | Individual `set` / `unset` / `clear` |
 | **Templating** | Top-level + nested `{field}` paths | + indexing, dynamic-field loads (`->`/`=>`/`~>`), transforms (`:json` etc.), fallbacks |
-| **RPC** | JSON-RPC + GraphQL (both deprecating) | JSON-RPC + GraphQL + **gRPC** (primary) |
+| **RPC** | JSON-RPC + GraphQL (both deprecating) | JSON-RPC + GraphQL + **gRPC** (gRPC is new in V2) |
 
-The rest of the document walks each row, V1 on the left, V2 on the right.
+The rest of the document walks each row, V1 on the left, V2 on the right — the first nine as numbered **Differences**, and the RPC row in the reference appendix.
 
 ---
 
@@ -45,7 +45,7 @@ The V2 redesign was driven by four fundamental problems the Sui engineering team
 
 1. **Publisher dependency** — a package published without claiming `Publisher` in `init()` could *never* create a Display. → fixed by the `Permit` path.
 2. **Multiple displays per type** — V1 allowed any number of `Display<T>`; the last event emitted by any of them won, creating ambiguity. → fixed by one-per-type enforcement.
-3. **Event-based indexing** — discovery required scanning `DisplayVersionUpdatedEvent` history, which didn't scale with Sui's move toward gRPC/GraphQL. → fixed by the registry.
+3. **Event-based indexing** — discovery required scanning `DisplayCreated` / `VersionUpdated` event history, which didn't scale with Sui's move toward gRPC/GraphQL. → fixed by the registry.
 4. **No versioning** — with a richer template engine coming, there was no way to version templates. → fixed by built-in versioning.
 
 ---
@@ -68,12 +68,12 @@ let display = display::new_with_fields<Hero>(&publisher, keys, values, ctx);
 // V2, path A — familiar Publisher pattern
 let (display, cap) = display_registry::new_with_publisher<Hero>(registry, publisher, ctx);
 
-// V2, path B — Permit, no Publisher needed (preferred long-term)
+// V2, path B — Permit path, no Publisher needed (illustrative)
 let permit = internal::permit<MyType>();
 let (display, cap) = registry.new(permit, ctx);
 ```
 
-The `Permit` pattern is the preferred long-term approach — it proves type ownership through the module system without requiring a Publisher object to have been claimed at publish time.
+The `Permit` path removes the hard Publisher dependency: it proves type ownership through the module system, so a package that never claimed a `Publisher` can still get a Display. Note that `internal::Permit<T>` is an **internal capability**, not part of the stable public API — in practice most developers create displays via `new_with_publisher`. The path shown here is illustrative of *why* the Publisher dependency is gone, not the everyday API.
 
 ---
 
@@ -92,20 +92,22 @@ This is a direct consequence of the registry being shared. `init()` runs at publ
 
 | | V1 | V2 |
 |---|---|---|
-| How indexers find the active Display | Scan historical `DisplayVersionUpdatedEvent` emissions | Deterministic dynamic-field lookup on `DisplayRegistry` at `0xd` |
-| Scalability | Fragile; poor fit for gRPC/GraphQL | Simple live-object query on a known address |
+| How indexers find the active Display | Scan historical `DisplayCreated` / `VersionUpdated` emissions | Deterministic derived-object lookup off `DisplayRegistry` at `0xd` |
+| Scalability | Fragile; poor fit for gRPC/GraphQL | Simple query for a computable object ID on a known address |
 
-V2 introduces `DisplayRegistry`, a **shared system object** living at the well-known address `0xd` (similar to how `Clock` lives at `0x6`):
+V2 introduces `DisplayRegistry`, a **shared system object** living at the well-known address `0xd` (similar to how `Clock` lives at `0x6`). It is the derivation root for every type's Display:
 
 ```
-DisplayRegistry (0xd)
-└── data: Bag
-    ├── TypeName<Hero> → Display<Hero> fields
-    ├── TypeName<Capy> → Display<Capy> fields
-    └── TypeName<NFT>  → Display<NFT> fields
+DisplayRegistry (0xd)          ← singleton; its UID is the derivation root
+   │
+   │  Display<T> id = derive(DisplayRegistry.uid, DisplayKey<T>)
+   ▼
+Display<Hero>   ← derived object, ID computable offline
+Display<Capy>   ← derived object
+Display<NFT>    ← derived object
 ```
 
-The registry uses a `Bag`, so both keys and values can evolve in the future; Display data is stored as dynamic fields keyed by type name. **Why this matters:** instead of scanning event history, a client computes the deterministic Display ID for any type via a dynamic-field query on a known address. No special indexing required, and no `update_version()` call to trigger it (see Difference 8).
+Each `Display<T>` is a **derived object** whose ID is computed deterministically from the registry's UID and a `DisplayKey<T>` marker (a `phantom`-typed struct). **Why this matters:** any client can compute a type's Display address *offline* and fetch it directly — no scanning event history, no special indexing, and no `update_version()` call to trigger discovery (see Difference 8).
 
 ---
 
@@ -162,8 +164,8 @@ V1 had no mechanism to evolve the template language. V2 versions it, which is wh
 
 | | V1 | V2 |
 |---|---|---|
-| Setting fields | Bulk: `new_with_fields(keys, values)` | Individual: `display.set(&cap, key, value)` |
-| Removing fields | (recreate) | `display.unset(&cap, key)` / `display.clear(&cap)` |
+| Setting fields | `add(k, v)` / `add_multiple` / `edit`, or bulk `new_with_fields(keys, values)` | Individual: `display.set(&cap, key, value)` |
+| Removing fields | `display.remove(key)` | `display.unset(&cap, key)` / `display.clear(&cap)` |
 | Triggering indexing | Manual `display.update_version()` | Automatic — registry handles it |
 | Authorization for edits | Owns the Display | Holds the `DisplayCap<T>` |
 
@@ -402,7 +404,7 @@ These sections cover the *transition* mechanics between the two versions, not fo
 
 ### Migration
 
-**Automatic system migration.** When Display V2 launched, all ~4,500 existing V1 Display objects on mainnet were **automatically migrated** via a system snapshot. Most projects required no action. The pre-migration on-chain analysis found:
+**Automatic system migration.** When Display V2 launched, all existing V1 Display objects on mainnet were **automatically migrated** via a system snapshot ("nothing broke for end users," per the Sui Foundation's 3 Apr 2026 blog). Most projects required no action. The pre-migration on-chain analysis found:
 
 - No cases of multiple Display objects per type (confirming Diff 4)
 - No on-chain Display dependencies (confirming backward compatibility is safe to drop)
@@ -431,7 +433,7 @@ These sections cover the *transition* mechanics between the two versions, not fo
 
 | Interface | V1 Display | V2 Display |
 |-----------|-----------|-----------|
-| JSON-RPC (`showDisplay`) | Supported until Q2 2026 deprecation | Supported (primary lookup) |
+| JSON-RPC (`showDisplay`) | Supported until July 2026 deprecation | Supported (primary lookup) |
 | GraphQL | Supported (deprecated after migration period) | Supported (primary) |
 | gRPC | Not supported | **Supported** |
 
@@ -441,9 +443,9 @@ V2 is the primary lookup path for all new infrastructure; V1 support is maintain
 
 | Date | Event |
 |------|-------|
-| April 2026 | Display V2 launches with Sui v1.68. `DisplayRegistry` created at `0xd`. |
-| April 2026 | System snapshot migrates all ~4,500 V1 displays automatically. |
-| Q2 2026 | JSON-RPC deprecated entirely. |
+| 25 March 2026 | Display V2 ships in `mainnet-v1.68.1` (protocol v118, release #23710). `DisplayRegistry` created at `0xd`. |
+| 25 March 2026 | System snapshot migrates all existing V1 displays automatically (announced in the 3 Apr 2026 blog). |
+| July 2026 | JSON-RPC support deprecated (same timeline as the V1 sunset below). |
 | **July 31, 2026** | **`sui::display::new` becomes non-callable.** V1 Display creation disabled. |
 | Post-July 2026 | Second migration sweep for in-between projects. V1 GraphQL support deprecated. |
 
