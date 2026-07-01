@@ -30,7 +30,7 @@ Everything else — how you *create* a Display, how it's *stored*, how indexers 
 | **Cardinality** | Any number of `Display<T>` per type | Exactly **one** per type, enforced |
 | **Object model** | One owned `Display<T>` object | Shared `Display<T>` + owned `DisplayCap<T>` |
 | **Type constraint** | `T: key` required | Any `T` (constraint relaxed) |
-| **Versioning** | None | Versioned template language |
+| **Version field** | `Display<T>` carries `version: u16`, manually bumped | Dropped — no version field (a derived address needs none) |
 | **Field API** | Bulk `new_with_fields(keys, values)` + `update_version()` | Individual `set` / `unset` / `clear` |
 | **Templating** | Top-level + nested `{field}` paths | + indexing, dynamic-field loads (`->`/`=>`/`~>`), transforms (`:json` etc.), fallbacks |
 | **RPC** | JSON-RPC + GraphQL (both deprecating) | JSON-RPC + GraphQL + **gRPC** (gRPC is new in V2) |
@@ -150,13 +150,16 @@ V1 restricted Display to types with the `key` ability. V2 relaxes this — Displ
 
 ---
 
-## Difference 7 — Versioning
+## Difference 7 — The per-object version field
 
 | | V1 | V2 |
 |---|---|---|
-| Template-language versioning | None | Built-in |
+| `version` field on `Display<T>` | `version: u16`, bumped manually via `update_version()` | None — the struct is `{ id, fields, cap_id }`, no version |
+| What it was for | Bumping re-emitted the `VersionUpdated` event so indexers noticed the change | Nothing to bump — the Display lives at a derived address indexers already compute |
 
-V1 had no mechanism to evolve the template language. V2 versions it, which is what makes the richer templating in Difference 9 possible without breaking existing displays.
+V1's `Display<T>` carried a `version: u16` the owner had to bump (`update_version()`) to re-emit the `VersionUpdated` discovery event. V2 drops the field entirely: because the object lives at a deterministically-derived address (Difference 3), there is no event and nothing to version for discovery.
+
+> The V2 design goals also mention versioning the template *language* so its syntax can evolve. That mechanism is not exposed in the `display_registry` framework module, so treat it as stated intent, not a verified feature.
 
 ---
 
@@ -166,7 +169,7 @@ V1 had no mechanism to evolve the template language. V2 versions it, which is wh
 |---|---|---|
 | Setting fields | `add(k, v)` / `add_multiple` / `edit`, or bulk `new_with_fields(keys, values)` | Individual: `display.set(&cap, key, value)` |
 | Removing fields | `display.remove(key)` | `display.unset(&cap, key)` / `display.clear(&cap)` |
-| Triggering indexing | Manual `display.update_version()` | Automatic — registry handles it |
+| Triggering indexing | Manual `display.update_version()` (re-emits the event) | None needed — discovery is by derived address |
 | Authorization for edits | Owns the Display | Holds the `DisplayCap<T>` |
 
 ```move
@@ -236,9 +239,13 @@ The `chain` walks the object; each `| alternate` is a fallback tried in order; t
 }
 ```
 
-**Transforms** (the `: transform` suffix): `:str` (default), `:hex`, `:base64(url,nopad)`, `:bcs`, `:json`, `:timestamp`/`:ts` (ISO-8601 from Unix ms), `:url` (percent-encode). As of `mainnet-v1.70.2` the engine implicitly applies `:json` to fields the default `:str` transform can't render.
+**Transforms** (the `: transform` suffix, from the resolver's `parse_xform`): `:str` (default), `:hex`, `:base64` (optional `(url, nopad)` modifiers), `:bcs` (same modifiers), `:json`, `:ts` (ISO-8601 timestamp from Unix ms), `:url` (percent-encode). As of `mainnet-v1.70.2` the engine implicitly applies `:json` to fields the default `:str` transform can't render.
 
-**Limits.** A template is bounded by `max_depth` 32, `max_nodes` 32,768, and `max_loads` 8 (each `->` costs 1, `=>` costs 2). Exceeding them raises `TooDeep` / `TooBig` / `TooManyLoads`; a bad transform raises `TransformInvalid`. Design templates so a missing optional field degrades to `null`/fallback rather than nulling the whole string.
+**Limits.** A template is bounded by `max_depth` 32, `max_nodes` 32,768, and `max_loads` 8 (each `->` and `~>` costs 1 load, `=>` costs 2). Exceeding them raises `TooDeep` / `TooBig` / `TooManyLoads`; a bad transform raises `TransformInvalid`. Design templates so a missing optional field degrades to `null`/fallback rather than nulling the whole string.
+
+**Resolution is off-chain — and interface-tiered.** Template resolution happens off-chain (indexer / RPC / GraphQL / gRPC), not in the Move module, in *both* versions — which is why the "richer engine" is a client-side change and its edge cases aren't in the framework source. Crucially, the tiers differ: **JSON-RPC `showDisplay` implements only the basic subset** (fields, nested paths, indexing, transforms) and **hard-errors on the load operators `->` / `=>` / `~>`** — and it is deprecating July 2026. The full chain expression (dynamic-field, dynamic-object-field, and derived-object loads) resolves on **GraphQL and gRPC**, the migration-target interfaces. So the load-based examples above are GraphQL/gRPC capabilities, not JSON-RPC ones.
+
+**Loads follow *attached* children, not arbitrary IDs.** A bare `ID`/`address` field is *not* auto-dereferenced: `{sword_id.power}` where `sword_id` is just an ID resolves to `null` (and `{sword_id}` renders the address itself). "Loading related objects" specifically means children *attached* to your object as a dynamic field (`->`), dynamic object field (`=>`), or derived object (`~>`).
 
 **No collection-level object type.** V2 has no dedicated "collection" type. The idiomatic pattern is to give the collection/registry object its own `Display<Collection>` and have each item's template cross-load shared metadata via `->` / `=>` / `~>`, instead of baking duplicated strings into every object (a common V1 gas hack).
 
@@ -417,7 +424,7 @@ These sections cover the *transition* mechanics between the two versions, not fo
 | 1. System migration | Automatic snapshot converts all V1 displays to V2 |
 | 2. Claim DisplayCap | Holders burn old V1 Display to claim V2 `DisplayCap` |
 | 3. Disable V1 | `sui::display::new` becomes non-callable (July 31, 2026) |
-| 4. Second sweep | Catches projects published between Phase 1 and Phase 3 |
+| 4. Follow-up sweep | A planned second pass for projects published between Phase 1 and Phase 3 |
 
 **Claiming a `DisplayCap` for a migrated display:**
 - **If you have the Publisher:** use it to claim a `DisplayCap` for the migrated V2 Display
@@ -446,8 +453,8 @@ V2 is the primary lookup path for all new infrastructure; V1 support is maintain
 | 25 March 2026 | Display V2 ships in `mainnet-v1.68.1` (protocol v118, release #23710). `DisplayRegistry` created at `0xd`. |
 | 25 March 2026 | System snapshot migrates all existing V1 displays automatically (announced in the 3 Apr 2026 blog). |
 | July 2026 | JSON-RPC support deprecated (same timeline as the V1 sunset below). |
-| **July 31, 2026** | **`sui::display::new` becomes non-callable.** V1 Display creation disabled. |
-| Post-July 2026 | Second migration sweep for in-between projects. V1 GraphQL support deprecated. |
+| **July 31, 2026** *(announced; forward-dated, could slip)* | **`sui::display::new` becomes non-callable.** V1 Display creation disabled. |
+| Post-July 2026 | A planned follow-up sweep for in-between projects. V1 GraphQL support deprecated. |
 
 **What you need to do:**
 - **New packages:** use `sui::display_registry` for all Display creation
