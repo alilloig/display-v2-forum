@@ -7,9 +7,10 @@
 /// dynamic-object-field load operator `=>`. Equip an item and the rendered Display
 /// changes; the Hero object itself is untouched.
 ///
-/// This is the capability the classic V1 Display could not express, and it only
-/// resolves over gRPC / GraphQL (JSON-RPC errors on load operators) — which is why
-/// this example doubles as the transport-migration lesson.
+/// This is the capability the classic V1 Display could not express. gRPC / GraphQL are
+/// the recommended SDK 2.0 clients, but on the sui 1.69.x localnet this dapp targets
+/// JSON-RPC `showDisplay` also resolves the `=>` load operators — so the projection
+/// works today over plain JSON-RPC, and the transport story is a migration recommendation.
 #[allow(lint(self_transfer))]
 module hero_forge::hero;
 
@@ -22,6 +23,9 @@ use sui::package::{Self, Publisher};
 
 /// That equipment slot is already filled (one Sword/Shield/Armor per Hero).
 const EAlreadyEquipped: u64 = 0;
+
+/// Nothing is equipped in that slot.
+const ENotEquipped: u64 = 1;
 
 // === One-time witness ===
 
@@ -88,6 +92,11 @@ fun init(otw: HERO, ctx: &mut TxContext) {
 
 // === Minting ===
 
+/// Construct a Hero with fixed base stats (composable; caller decides what to do with it).
+public fun new_hero(name: String, image_url: String, base_attack: u64, base_defense: u64, ctx: &mut TxContext): Hero {
+    Hero { id: object::new(ctx), name, image_url, base_attack, base_defense }
+}
+
 /// Mint a Hero with fixed base stats and transfer it to the caller.
 public fun mint_hero(
     name: String,
@@ -96,8 +105,7 @@ public fun mint_hero(
     base_defense: u64,
     ctx: &mut TxContext,
 ) {
-    let hero = Hero { id: object::new(ctx), name, image_url, base_attack, base_defense };
-    transfer::public_transfer(hero, ctx.sender());
+    transfer::public_transfer(new_hero(name, image_url, base_attack, base_defense, ctx), ctx.sender());
 }
 
 /// Construct a Sword object (composable; caller decides what to do with it).
@@ -147,16 +155,19 @@ public fun mint_and_equip_armor(hero: &mut Hero, name: String, image_url: String
 // Detach and return the item to the caller so the demo can show stats revert live.
 
 public fun unequip_sword(hero: &mut Hero, ctx: &mut TxContext) {
+    assert!(dof::exists_(&hero.id, sword_key()), ENotEquipped);
     let sword: Sword = dof::remove(&mut hero.id, sword_key());
     transfer::public_transfer(sword, ctx.sender());
 }
 
 public fun unequip_shield(hero: &mut Hero, ctx: &mut TxContext) {
+    assert!(dof::exists_(&hero.id, shield_key()), ENotEquipped);
     let shield: Shield = dof::remove(&mut hero.id, shield_key());
     transfer::public_transfer(shield, ctx.sender());
 }
 
 public fun unequip_armor(hero: &mut Hero, ctx: &mut TxContext) {
+    assert!(dof::exists_(&hero.id, armor_key()), ENotEquipped);
     let armor: Armor = dof::remove(&mut hero.id, armor_key());
     transfer::public_transfer(armor, ctx.sender());
 }
@@ -169,6 +180,9 @@ public fun unequip_armor(hero: &mut Hero, ctx: &mut TxContext) {
 /// The Hero `inventory` template is the headline: each item is loaded EXACTLY ONCE
 /// via `=>` (2 loads each → 6 total, within the 8-load budget) and its `summary`
 /// projected. With nothing equipped every load is null and the field renders empty.
+///
+/// Not unit-tested (test_scenario can't seed the DisplayRegistry singleton at 0xd);
+/// exercised end-to-end by hero-scripts/publish-localnet.sh instead.
 public fun create_displays(
     registry: &mut DisplayRegistry,
     publisher: &mut Publisher,
@@ -252,6 +266,34 @@ fun mint_equip_unequip_flow() {
     let sword = sc.take_from_sender<Sword>();
     assert!(sword.attack == 6);
     transfer::public_transfer(sword, user);
+
+    transfer::public_transfer(hero, user);
+    sc.end();
+}
+
+#[test]
+fun equip_unequip_armor_flow() {
+    let user = @0xA11CE;
+    let mut sc = ts::begin(user);
+    mint_hero(s(b"Aragorn"), s(b"https://img/hero.png"), 10, 10, sc.ctx());
+    sc.next_tx(user);
+    let mut hero = sc.take_from_sender<Hero>();
+
+    // Armor is the only two-stat item — exercise its full equip/unequip path.
+    mint_and_equip_armor(&mut hero, s(b"Plate Armor"), s(b"https://img/armor.png"), 2, 5, s(b"[Plate Armor +5 DEF +2 ATK] "), sc.ctx());
+    assert!(dof::exists_(&hero.id, armor_key()));
+    // Base stats untouched by equipping.
+    assert!(hero.base_attack == 10);
+    assert!(hero.base_defense == 10);
+
+    unequip_armor(&mut hero, sc.ctx());
+    assert!(!dof::exists_(&hero.id, armor_key()));
+
+    sc.next_tx(user);
+    let armor = sc.take_from_sender<Armor>();
+    assert!(armor.attack == 2);
+    assert!(armor.defense == 5);
+    transfer::public_transfer(armor, user);
 
     transfer::public_transfer(hero, user);
     sc.end();

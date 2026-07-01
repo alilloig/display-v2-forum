@@ -44,7 +44,12 @@ export function useOwnedHero(address: string | null) {
         filter: { StructType: HERO_TYPE },
         options: { showContent: true, showDisplay: true },
       });
-      const first = owned.data.find((o) => o.data?.objectId)?.data;
+      // Deterministic pick when a wallet owns more than one Hero (reachable via double-mint):
+      // sort by objectId so the same Hero renders across reads.
+      const first = owned.data
+        .map((o) => o.data)
+        .filter((d): d is RawObj => !!d?.objectId)
+        .sort((a, b) => a.objectId!.localeCompare(b.objectId!))[0];
       if (!first?.objectId) return null;
 
       // Which slots are filled: read the Hero's dynamic object fields.

@@ -25,14 +25,19 @@ export function App() {
 
   async function run(tx: () => Transaction, nextStep: string) {
     setError('');
-    const r = await signAndExecute(tx());
-    if (!r.ok) { setError(r.error ?? 'Transaction failed'); return false; }
-    setStep(nextStep);
-    // Give the fullnode a moment to index the new object state before re-reading,
-    // otherwise getOwnedObjects/getDynamicFields can return the pre-tx snapshot.
-    await new Promise((res) => setTimeout(res, 800));
-    await refetch();
-    return true;
+    try {
+      const r = await signAndExecute(tx());
+      if (!r.ok) { setError(r.error ?? 'Transaction failed'); return false; }
+      setStep(nextStep);
+      // Give the fullnode a moment to index the new object state before re-reading,
+      // otherwise getOwnedObjects/getDynamicFields can return the pre-tx snapshot.
+      await new Promise((res) => setTimeout(res, 800));
+      await refetch();
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return false;
+    }
   }
 
   async function onMint() {
@@ -104,7 +109,7 @@ export function App() {
             <HeroStage hero={hero} />
             <div>
               <h2 style={{ fontSize: '1rem', margin: '0 0 8px' }}>Armory</h2>
-              <Armory equipped={hero.equipped} busySlot={busySlot} onEquip={onEquip} onUnequip={onUnequip} disabled={busy} />
+              <Armory equipped={hero.equipped} busySlot={busySlot} onEquip={onEquip} onUnequip={onUnequip} disabled={busy || busySlot !== null} />
             </div>
           </div>
         )}
