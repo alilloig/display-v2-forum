@@ -375,17 +375,19 @@ Simply use `sui::display_registry` instead of `sui::display`. There's nothing to
 
 ---
 
-## RPC Support
+## RPC Support — and *which* interface resolves *what*
 
-| Interface | V1 Display | V2 Display |
-|-----------|-----------|-----------|
-| JSON-RPC (`showDisplay`) | Supported until the July 2026 deprecation | Supported (primary lookup) |
-| GraphQL | Supported (will be deprecated after migration period) | Supported (primary) |
-| gRPC | Not supported | Supported |
+Two separate axes matter: does the interface resolve V2 at all, and **how much of the template engine does it implement**. They differ, and it's the crux for the richer features.
 
-V2 is the primary lookup path for all new infrastructure. V1 support is maintained during the transition but will be removed.
+| Interface | Resolves V2? | Template power | Status |
+|-----------|-----------|-----------|-----------|
+| **JSON-RPC** (`showDisplay`) | Yes (PR #25360 — V2 takes precedence over V1) | **Basic subset**: flat fields · inlined nested/wrapped paths · transforms (`:json` etc.) · top-level **typed** vector indexing (`{nums[0u64]}`). **No** `->` chain navigation / dynamic-field / cross-object. | **Deprecating July 2026** |
+| **GraphQL** | Yes (`MoveValue.display` / `format` / `extract`) | **Full "chain expression"**: nested/named/positional fields, vector indices, VecMap keys, **dynamic (object) field accesses** (`foo->[42u64]`). | Migration target |
+| **gRPC** | Yes — blog: *"full display rendering for the first time"* | Full (chain-syntax parity not independently primary-sourced). | Migration target |
 
-> **Verification note:** Only the **JSON-RPC** row is confirmed against a primary source — release notes PR #25360: when `showDisplay` is set, the RPC reads a `Display<T>` from the registry and *"takes precedence over any Display v1 formats."* The **GraphQL** and **gRPC** rows reflect the launch materials but the exact per-interface schema/behaviour was **not independently verified** here; treat them as directional.
+**The load-bearing point:** the *rich* V2 features (following references, dynamic fields, deep chain navigation) are implemented by **GraphQL and gRPC — the interfaces the ecosystem is migrating *to*** — **not** by JSON-RPC, which resolves only the basic subset and is itself being sunset in July 2026. So "V2 can reference other objects" is true, but only through GraphQL/gRPC; a JSON-RPC client (like a wallet or a dapp on `SuiJsonRpcClient`) will not resolve those forms.
+
+> **Sourcing:** JSON-RPC precedence is confirmed (release notes PR #25360). The GraphQL chain-expression capability is confirmed from the GraphQL beta schema (`MoveValue.extract`). The gRPC "full rendering" claim is from the launch blog (not independently schema-verified). The exact *stored-template* grammar for dynamic-field / ID-cross tokens is **not settled by primary sources**; the basic-subset behaviour above was verified empirically against JSON-RPC on localnet (the only interface a `--force-regenesis`/sandbox localnet exposes).
 
 ---
 
@@ -432,7 +434,11 @@ If a value lives **inside the object's own bytes**, a dot-path reaches it — an
 
 The V1-vs-V2 line is whether the value is **inlined** (by value, ✓ in V1) or behind a **reference** to a separately-stored object. Per the launch blog, V1 templates *"couldn't reference collections, dynamic fields, or related objects."* V2 can:
 
-- **Dynamic fields & related objects** — load a dynamic field attached to the object, or follow an **ID reference** to a *separate* on-chain object (one **not** embedded by value) and read its fields. *(This is the real "nested objects" feature. The exact template syntax for following a reference is not documented in the sources reviewed and was not reproduced empirically — confirm against the V2 template-syntax docs before relying on a specific form.)*
+- **Dynamic fields & related objects** — load a dynamic field attached to the object, or follow an **ID reference** to a *separate* on-chain object (one **not** embedded by value) and read its fields. This is the real "nested objects" feature.
+
+**The syntax — a "Display V2 chain expression."** The Sui GraphQL beta schema documents it on `MoveValue.extract(path)`: *"path is a Display v2 chain expression, allowing access to nested, named and positional fields, vector indices, VecMap keys, and dynamic (object) field accesses,"* with a navigation form using `->` and bracketed keys, e.g. `foo->[42u64]`. So the chain grammar (arrow-navigation into dynamic fields / related objects, typed bracket indexing) is a **real, documented V2 capability** — it just lives at the query/resolution layer, not as anything stored in the Move module.
+
+> **⚠ Which interface resolves this matters (and it's not JSON-RPC).** The richer chain expression is implemented by **GraphQL** (and, per the launch blog, **gRPC** — which "gains full display rendering for the first time"). **JSON-RPC `showDisplay` implements only the *basic* subset** — flat fields, inlined nested/wrapped paths, transforms, and top-level typed indexing; its resolver **rejects** the `->` navigation form (verified: `->[…]` is a parse error via JSON-RPC). Since JSON-RPC is itself **deprecating (July 2026)** in favour of gRPC/GraphQL, treat reference/dynamic-field following as a **GraphQL/gRPC feature**. The exact *stored-template* token form (e.g. how a dynamic-field key or an ID-cross is written inside a `set(...)` string, vs. only as a GraphQL `extract` argument) is **not settled by primary sources** and could not be reproduced on a JSON-RPC-only localnet — confirm against a GraphQL/gRPC endpoint before relying on a specific stored form.
 
 ### Value transforms — `{field:transform}`
 
@@ -464,7 +470,7 @@ base64 · bcs · hex · json · str · ts · url
 | `vector<u64>` (non-`u8`) | **error** — not directly renderable; use `:json` |
 | a bare struct (no `:json`) | **error** — not directly renderable; use `:json` |
 
-`{vec[i]}` **index access is not supported** (parse error) — "collection traversal" is via `:json` on the whole collection, not element indexing, in this build.
+**Vector indexing works with a *typed* index:** `{nums[0u64]}` → `"10"`. A bare `{nums[0]}` **fails** — the resolver wants the integer type suffix (*"expected one of 'u128'…'u8'"*). `:json` on the whole collection also works (`{nums:json}` → `["10","20","30"]`), so you can index a specific element *or* dump the whole thing. *(Verified via JSON-RPC `showDisplay` — see the interface note below; richer navigation forms belong to GraphQL/gRPC.)*
 
 ### Missing fields vs invalid expressions (two distinct behaviours)
 
