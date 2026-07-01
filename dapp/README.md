@@ -1,113 +1,88 @@
-# Display V2 Metadata-Views Playground
+# Hero Forge — Display V2 × Dynamic Object Fields
 
-An interactive, localnet-only playground for Sui's **Display V2** (`sui::display_registry`).
-You **design** an NFT's traits, **publish** a bespoke contract with one click, **mint**, then
-**drag/compose** those fields into the Display and watch the rendered "metadata view" change.
+A dapp that teaches Sui's **Display V2** (`sui::display_registry`) through a game
+narrative, showcasing the headline V2 capability: **Display templates that load data live
+from dynamic object fields (DOFs) attached to an object.**
 
-> The thesis it teaches: an object's on-chain struct fields never change. A **metadata view**
-> (the Display template) is a *mutable projection* over those *immutable* fields.
+> The thesis it teaches: an object's on-chain struct fields never change. A **Display
+> template** is a *mutable projection* over those *immutable* fields — and in V2 that
+> projection can reach into **child objects attached as dynamic object fields** and render
+> them live.
 
-## The 4 steps
+## The idea
 
-1. **Design traits** — build the NFT's schema (flat `string`/`u64`/`bool` fields + nested
-   groups), with a live preview of the generated Move struct.
-2. **Publish** — one click. A local bridge generates the Move module, builds it,
-   `test-publish`es it to localnet, creates the shared `Display`, and transfers the
-   `DisplayCap` to your connected wallet.
-3. **Mint** — a form generated from your schema; wallet-signed.
-4. **Display playground** — drag your field tokens (flat `{field}` and nested `{group.field}`)
-   into the 7 standard Display properties, compose literal text + tokens, **Apply** (one
-   `set`/`unset` PTB via the cap), and watch the resolved render change **before → after**
-   while the raw struct fields stay fixed.
+1. **Mint a Hero** — `base_attack` / `base_defense` are fixed at mint and *never* mutated.
+2. **Forge & equip** up to one **Sword**, **Shield**, and **Armor**. Each is its own object,
+   attached to the Hero as a **dynamic object field** (`sword` / `shield` / `armor` keys).
+3. The Hero's `Display<Hero>` template — set **once** at deploy — has an `inventory` field:
+
+   ```
+   {$self=>['sword'].summary | ''}{$self=>['shield'].summary | ''}{$self=>['armor'].summary | ''}
+   ```
+
+   The `=>` load operator loads each attached DOF child (2 loads each; 6 total, within the
+   8-load budget) and projects its `summary`. Equip an item and the resolved Display
+   changes — **the Hero object itself is never touched.** That is the whole point.
+
+The effective Attack/Defense total is summed **client-side** (Display templates can't do
+arithmetic); the on-chain-verifiable part is the live `inventory` projection.
+
+## The nine differences
+
+The bottom panel narrates all nine canonical Display V1→V2 differences (source:
+`../learning/display-v2-guide.md`), highlighting the one each step demonstrates. See
+`hero-frontend/src/lessons.ts`.
+
+> **Transport note:** the guide says JSON-RPC can't resolve load operators — but on
+> `sui 1.69.2`, `showDisplay` **does** resolve `=>`, so this dapp's live projection works
+> over plain JSON-RPC today. gRPC / GraphQL are still the recommended SDK 2.0 clients
+> (JSON-RPC is deprecated), which is how the transport lesson is framed.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `hero-move/` | The `hero_forge::hero` Move package (Hero + Sword/Shield/Armor structs, equip/unequip via DOFs, `create_displays`). |
+| `hero-scripts/publish-localnet.sh` | Build + `test-publish` + `create_displays` (Hero + 3 item Displays in one PTB) + write `hero-frontend/src/deployment.ts`. |
+| `hero-frontend/` | React + Vite frontend on **SDK 2.0** (`@mysten/dapp-kit-react`, `@mysten/sui` 2.x). |
+| `hero-frontend/src/chain.ts` | Reads the owned Hero (content + resolved Display + attached DOFs) and builds mint/equip/unequip PTBs. |
+| `hero-frontend/src/items.ts` | The fixed item catalog (stats + `summary` strings the Display projects). |
+| `hero-frontend/src/sprites.ts` | Deterministic equipped-set → composite sprite (pre-rendered PNGs in `public/sprites/`). |
+| `hero-frontend/src/lessons.ts` | The 9 V1→V2 differences + transport note. |
+| `hero-frontend/src/components/` | `HeroStage`, `Armory`, `LessonPanel`, `SignerBar`. |
 
 ## Prerequisites
 
 - Sui CLI on PATH (built/tested with **1.69.2**).
+- `jq` (used by the publish script).
 - Node.js 20+ and pnpm.
-- A wallet extension (Slush) with **localnet** added (see caveat below).
 
-## Run it
+## Deploy & run
+
+**Target network: devnet.** Deployment publishes the fixed `hero_forge` package, runs
+`create_displays` (the Hero + 3 item Displays in one PTB), and writes
+`hero-frontend/src/deployment.ts` with every resulting id.
 
 ```bash
-# 1. Local Sui network (idempotent; skips if 9000 is already up)
-bash dapp/scripts/start-localnet.sh
-
-# 2. Install + run the bridge AND the dev server together
-cd dapp/frontend
+cd hero-frontend
 pnpm install
-pnpm play          # starts the publish bridge (:8787) + Vite (:5173)
+pnpm publish:localnet   # publish package + create the 4 Displays → deployment.ts
+pnpm dev                # dev server on port 5175
 ```
 
-Open `http://localhost:5173`, connect Slush (on localnet), and walk the 4 steps. Each
-"Publish" regenerates `dapp/move/sources/hero.move` from your design and republishes — no
-manual CLI steps.
+> **Migration note:** the deployment tooling (`hero-scripts/publish-localnet.sh` and the
+> frontend client in `hero-frontend/src/dapp-kit.ts`) is being pointed at **devnet** — a
+> devnet publish script + gRPC client (`@mysten/sui/grpc`, the SDK 2.0 recommendation) land
+> in the next step. Sprites can be hosted on Walrus for a public deploy.
 
-### The publish bridge
-
-`pnpm play` runs `dapp/scripts/bridge.mjs`, a tiny **localhost-only** Node server. A browser
-can't run the Sui CLI, so the bridge does the build + `test-publish` + `create_display` +
-cap-transfer on `POST /publish`. It is a local dev tool: it binds `127.0.0.1` only, and every
-identifier/type in your schema is validated against a strict allowlist before any Move is
-generated (see `dapp/frontend/src/schema.js`), so the generated module is structurally fixed.
-
-### Signing: Dev key (recommended for localnet) vs wallet
-
-The header has a **Signer** toggle:
-
-- **Dev key** (recommended for localnet) — a local Ed25519 keypair held in the browser,
-  funded from the localnet faucet with one click. It signs `mint` / `set` / `unset` directly
-  with no wallet popups, which makes the whole wizard hands-free (and automatable). Use this
-  for local development and end-to-end testing.
-- **Wallet** — a browser wallet via `ConnectButton`. Note: the hosted **Slush web/zkLogin
-  wallet cannot sign localnet transactions** (it submits through its own mainnet/testnet
-  backend). To use a real wallet on localnet you need one that supports a local keypair + a
-  custom `http://127.0.0.1:9000` RPC. The wallet path is most useful when the dapp targets a
-  public network.
-
-Whichever signer is active when you Publish receives the `DisplayCap`, so it (and only it) can
-edit the Display in step 4.
-
-## CLI path + automated tests (no browser)
-
-The Move package + scripts also work entirely from the CLI on the **default sample schema**:
-
-```bash
-bash dapp/scripts/publish.sh          # build + test-publish + create_display → deployment.ts
-node --test dapp/scripts/codegen.test.mjs   # codegen → `sui move build` for many schemas
-node dapp/scripts/bridge.smoke.mjs    # publish the default schema via the bridge, assert cap transfer
-bash dapp/scripts/e2e.sh              # E-001: prove object-unchanged / template-changed / render-updated
-```
-
-`e2e.sh` exits `E-001 PASS` on success. It mints a Hero, sets `name`/`image_url`/`description`
-templates, asserts the resolved `display.data` matches the expected rendered strings and that
-`content.fields` is byte-for-byte unchanged, then unsets `description` and re-asserts.
-
-## Manual playground checklist (browser + wallet)
-
-With `start-localnet.sh` + `pnpm play` running. Pick a **Signer** in the header first —
-**Dev key** (click "Fund from faucet") gives a popup-free run; **Wallet** needs a
-localnet-capable wallet (see the signing note above). Then:
-
-- [ ] **Step 1 — Design.** Add/edit fields, add a nested group (e.g. `stats` with
-      `strength: u64`, `defense: u64`). The "Generated Move" panel updates live and the
-      schema validates (errors shown inline for bad names).
-- [ ] **Step 2 — Publish.** Connect Slush first. Click **Publish contract**; on success the
-      package/Display/cap ids appear and you advance to Mint. (If the bridge is down you'll be
-      told to run `pnpm play`.)
-- [ ] **Step 3 — Mint.** The form shows one input per designed field (incl. nested as
-      `group.field`); decimals are rejected for `u64`. Approve in Slush; the new object appears
-      in "My …s" with raw fields on the left and "No display fields set yet" on the right.
-- [ ] **Step 4 — Display.** The editor is visible only to the cap-owning wallet. Drag tokens
-      (incl. `{stats.strength}`) into the 7 props, compose a string like
-      `STR {stats.strength} / DEF {stats.defense}`, **Apply** (one Slush prompt). Paste a minted
-      object id into the Before→After panel and Refresh: the **raw struct fields are unchanged**
-      while the **resolved display** goes from before → after. That's the metadata-view thesis.
+Open `http://localhost:5175`. Use the **Dev key** signer (funded from the network faucet)
+for hands-free signing, or connect a wallet. Mint a Hero, then forge items and watch the
+Display projection and composite sprite update as equipment changes while the Hero's raw
+struct fields stay fixed.
 
 ## Notes
 
-- `frontend/src/deployment.ts` (CLI path) and `move/.localnet-publication.json` are generated
-  and gitignored. The frontend itself reads live ids from React context (the publish response),
-  not `deployment.ts`.
-- `--force-regenesis` (in `start-localnet.sh`) wipes chain state on each fresh start —
-  re-publish afterward. The committed `hero.move` is the default sample; the bridge regenerates
-  it per design (use step 1's "Reset to sample" to restore the default schema).
+- `hero-frontend/src/deployment.ts` is generated by the publish script and gitignored. The
+  frontend reads live ids from it.
+- The Hero's four Displays (`Hero`, `Sword`, `Shield`, `Armor`) and their `DisplayCap`s are
+  created once by `create_displays`; the caps go to the publishing address.
