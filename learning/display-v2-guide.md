@@ -387,7 +387,7 @@ Two separate axes matter: does the interface resolve V2 at all, and **how much o
 
 **The load-bearing point:** the *rich* V2 features (following references, dynamic fields, deep chain navigation) are implemented by **GraphQL and gRPC — the interfaces the ecosystem is migrating *to*** — **not** by JSON-RPC, which resolves only the basic subset and is itself being sunset in July 2026. So "V2 can reference other objects" is true, but only through GraphQL/gRPC; a JSON-RPC client (like a wallet or a dapp on `SuiJsonRpcClient`) will not resolve those forms.
 
-> **Sourcing — verified live on testnet (2026-07-01).** All three interfaces were run against the *same* object with the *same* stored templates. JSON-RPC: basic subset (typed index `{nums[0u64]}` → `"10"`; `->` hard-errors). **GraphQL**: `object{ asMoveObject{ contents{ display{ output errors } } } }` returned `output` as a JSON blob (`{"first_num":"10","all_nums":["10","20","30"],…}`, `errors: null`); ad-hoc `format`/`extract` **accept** the `->` chain grammar (return `null` on a non-applicable node rather than erroring). **gRPC** (`@mysten/sui/grpc`): `ledgerService.getObject` with `readMask:['display']` returned the identical `display.output` (a protobuf `Struct`) + `display.errors`. Two nuances found: a plain dot-path does **not** auto-cross an `ID` field into the referenced object (`{child.power}` → `null`; `{child}` renders the ID as an address); and the exact *stored-template* token for a dynamic-field key (byte-string vs identifier) is still not pinned down.
+> **Sourcing — verified live on testnet (2026-07-01).** All three interfaces were run against the *same* object with the *same* stored templates. JSON-RPC: basic subset (typed index `{nums[0u64]}` → `"10"`; `->` hard-errors). **GraphQL**: `object{ asMoveObject{ contents{ display{ output errors } } } }` returned `output` as a JSON blob (`{"first_num":"10","all_nums":["10","20","30"],…}`, `errors: null`); ad-hoc `format`/`extract` **accept** the `->` chain grammar (return `null` on a non-applicable node rather than erroring). **gRPC** (`@mysten/sui/grpc`): `ledgerService.getObject` with `readMask:['display']` returned the identical `display.output` (a protobuf `Struct`) + `display.errors`. Two nuances found: a plain dot-path does **not** auto-cross an `ID` field into the referenced object (`{child.power}` → `null`; `{child}` renders the ID as an address); and a dynamic-field key is written as a single-quoted, correctly-typed literal — `{$self->['df_key']}` (String key) resolved to `888` as a stored template, `{$self->[b'df_key']}` (byte-array key) to `null`.
 
 ---
 
@@ -430,15 +430,30 @@ If a value lives **inside the object's own bytes**, a dot-path reaches it — an
 
 *Verified on localnet: a `Hero`-like `Outer { inner: Inner }` where `Inner has key, store` resolved `{inner.val}` → `"777"` and `{inner.id}` → the wrapped object's address — under **both V1 (`sui::display`) and V2 (`display_registry`)**, identically. The `key` ability is irrelevant to inlined resolution; embedding by value inlines the bytes.*
 
-### Genuinely new in V2 — reach a *separate* object by reference
+### Genuinely new in V2 — traverse into *attached* children (the "chain expression")
 
-The V1-vs-V2 line is whether the value is **inlined** (by value, ✓ in V1) or behind a **reference** to a separately-stored object. Per the launch blog, V1 templates *"couldn't reference collections, dynamic fields, or related objects."* V2 can:
+The V1-vs-V2 line is whether the value is **inlined** (by value, ✓ in V1) or behind a **reference** to a separately-stored child object. Per the launch blog, V1 templates *"couldn't reference collections, dynamic fields, or related objects."* V2 adds a real grammar for exactly this — the **"Display V2 chain expression"** (framework source: `sui-display/src/v2/parser.rs`). A chain is a root followed by accessors:
 
-- **Dynamic fields & related objects** — load a dynamic field attached to the object, or follow an **ID reference** to a *separate* on-chain object (one **not** embedded by value) and read its fields. This is the real "nested objects" feature.
+```
+{ chain ('|' chain)* (':' transform)? }      -- '|' = fallback alternates, ':' = transform
+chain    ::= (root-literal | IDENT) accessor*
+accessor ::= .field | .N            -- named / positional field (inlined; works in V1 too)
+           | [ key ]                -- Index:    vector element / VecMap value
+           | -> [ key ]             -- DFIndex:  dynamic field
+           | => [ key ]             -- DOFIndex: dynamic object field
+           | ~> [ key ]             -- Derived:  derived object
+root     ::= $self | @addr | true|false | 123u64 | 'str' | b'bytes' | x'hex' | vector<T>[…] | …
+```
 
-**The syntax — a "Display V2 chain expression."** The Sui GraphQL beta schema documents it on `MoveValue.extract(path)`: *"path is a Display v2 chain expression, allowing access to nested, named and positional fields, vector indices, VecMap keys, and dynamic (object) field accesses,"* with a navigation form using `->` and bracketed keys, e.g. `foo->[42u64]`. So the chain grammar (arrow-navigation into dynamic fields / related objects, typed bracket indexing) is a **real, documented V2 capability** — it just lives at the query/resolution layer, not as anything stored in the Move module.
+Key points that trip people up (all **verified live on testnet**, and grounded in the parser source):
 
-> **⚠ Which interface resolves this matters (and it's not JSON-RPC).** The chain expression is implemented by **GraphQL** (and **gRPC**), not JSON-RPC. **Verified live on testnet:** GraphQL's `format`/`extract` **parse** the `->[…]` grammar (returning `null` on a non-applicable node), whereas JSON-RPC `showDisplay` **hard-errors** on the same string. So reference/dynamic-field following is a **GraphQL/gRPC feature**; a JSON-RPC client (incl. a `SuiJsonRpcClient` dapp) will not resolve it — and JSON-RPC is deprecating July 2026 anyway. What's still **not pinned down**: the exact bracket-key literal for a *dynamic-field* access and whether a *bare `ID` field* can be auto-followed to another object (a plain dot-path across an `ID` returned `null` in testing — `{child}` renders the ID as an address, but `{child.power}` did not load the referenced object). The bracket grammar accepts an identifier, a typed number (e.g. `0u64`), a byte/hex string (`b"…"`/`x"…"`), `@address`, or `$var` — **not** a plain `"quoted"` string.
+- **String keys use single quotes**, not double: `'df_key'` is a Move `String`; `b'…'`/`x'…'` are byte arrays. A chain that traverses the object itself must root with **`$self`**.
+- **Dynamic-field access, resolved for real:** with a `String`-keyed dynamic field `df_key → 888u64`, the stored template `"{$self->['df_key']}"` renders **`888`** — both via the ad-hoc `MoveValue.format`/`extract` API *and* as a stored on-chain template read back through `display.output`.
+- **The key's *type* must match.** `{$self->['df_key']}` (String key) → `888`; `{$self->[b'df_key']}` (byte-array key) → `null`. Different key types are different dynamic fields.
+- **Vector indexing needs a *typed* index:** `{nums[0u64]}` → `"10"`; bare `{nums[0]}` errors.
+- **A bare `ID` field is NOT auto-followed.** `{child}` (an `ID`) renders as an address, but `{child.power}` → `null`. V2's "related objects" means **attached children** — dynamic fields (`->`), dynamic object fields (`=>`), derived objects (`~>`) — reached via these accessors, *not* an arbitrary pointer chase. (There is a bounded "load" budget: `->` costs 1 load, `=>` costs 2.)
+
+> **⚠ Which interface resolves this matters (and it's not JSON-RPC).** The chain expression is implemented by **GraphQL** (`MoveValue.display`/`format`/`extract`) and **gRPC** — not JSON-RPC. **Verified live on testnet:** GraphQL parses and resolves the `->`/`=>`/`~>` grammar; JSON-RPC `showDisplay` **hard-errors** on `->` and only handles the basic subset (flat, inlined nested/wrapped paths, transforms, typed top-level indexing). So reference/dynamic-field following is a **GraphQL/gRPC feature**; a JSON-RPC client (incl. a `SuiJsonRpcClient` dapp) will never resolve it — and JSON-RPC is deprecating July 2026 anyway.
 
 ### Value transforms — `{field:transform}`
 
