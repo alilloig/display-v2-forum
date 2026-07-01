@@ -2,6 +2,7 @@
 // aborts on a second attach) and then unequipped. Equipping attaches a dynamic object
 // field to the Hero; the resolved Display and the composite sprite update from that.
 import { ITEMS, SLOTS, type Slot } from '../items';
+import { primaryButton } from '../styles';
 
 interface ArmoryProps {
   equipped: Set<Slot>;
@@ -38,7 +39,7 @@ export function Armory({ equipped, busySlot, onEquip, onUnequip, disabled }: Arm
                 type="button"
                 onClick={() => onEquip(slot)}
                 disabled={disabled || busy}
-                style={{ width: '100%', padding: '5px 0', fontSize: '0.78rem', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 600, cursor: disabled || busy ? 'wait' : 'pointer' }}
+                style={{ ...primaryButton, width: '100%', padding: '5px 0', fontSize: '0.78rem', borderRadius: 6, fontWeight: 600, cursor: disabled || busy ? 'wait' : 'pointer' }}
               >
                 {busy ? 'Forging…' : 'Mint & equip'}
               </button>

@@ -13,6 +13,7 @@ import { useOwnedHero, useSignAndExecute, buildMintHeroTx, buildEquipTx, buildUn
 import { spriteFor } from './sprites';
 import type { Slot } from './items';
 import { deriveCycle, type CycleAction } from './lessons';
+import { alertBanner, primaryButton } from './styles';
 
 export function App() {
   const address = useCurrentAccount()?.address ?? null;
@@ -78,13 +79,13 @@ export function App() {
       </header>
 
       {!deployed && (
-        <div style={{ padding: 12, background: '#fef2f2', color: '#991b1b', borderRadius: 8, fontSize: '0.85rem' }}>
+        <div style={alertBanner}>
           No deployment found. Run <code>pnpm publish:devnet</code> (from <code>hero-frontend/</code>) to publish the package and generate <code>deployment.ts</code>.
         </div>
       )}
 
       {error && (
-        <div style={{ padding: 10, background: '#fef2f2', color: '#991b1b', borderRadius: 8, fontSize: '0.82rem', marginBottom: 12, wordBreak: 'break-all' }}>
+        <div style={{ ...alertBanner, marginBottom: 12, wordBreak: 'break-all' }}>
           {error}
         </div>
       )}
@@ -104,7 +105,7 @@ export function App() {
               type="button"
               onClick={onMint}
               disabled={busy}
-              style={{ padding: '9px 22px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: busy ? 'wait' : 'pointer' }}
+              style={{ ...primaryButton, padding: '9px 22px', borderRadius: 8, fontSize: '0.95rem', cursor: busy ? 'wait' : 'pointer' }}
             >
               {busy ? 'Minting…' : 'Mint Hero'}
             </button>

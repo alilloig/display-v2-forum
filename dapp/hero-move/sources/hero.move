@@ -122,20 +122,30 @@ public fun new_armor(name: String, image_url: String, attack: u64, defense: u64,
 }
 
 // === Equipping (dynamic object fields) ===
+// One generic attach/detach pair carries the slot invariants; the public
+// per-type API stays explicit (same pattern as `create_item_display`).
+
+fun attach<T: key + store>(hero: &mut Hero, key: String, item: T) {
+    assert!(!dof::exists_(&hero.id, key), EAlreadyEquipped);
+    dof::add(&mut hero.id, key, item);
+}
+
+fun detach<T: key + store>(hero: &mut Hero, key: String, ctx: &TxContext) {
+    assert!(dof::exists_(&hero.id, key), ENotEquipped);
+    let item: T = dof::remove(&mut hero.id, key);
+    transfer::public_transfer(item, ctx.sender());
+}
 
 public fun equip_sword(hero: &mut Hero, sword: Sword) {
-    assert!(!dof::exists_(&hero.id, sword_key()), EAlreadyEquipped);
-    dof::add(&mut hero.id, sword_key(), sword);
+    attach(hero, sword_key(), sword);
 }
 
 public fun equip_shield(hero: &mut Hero, shield: Shield) {
-    assert!(!dof::exists_(&hero.id, shield_key()), EAlreadyEquipped);
-    dof::add(&mut hero.id, shield_key(), shield);
+    attach(hero, shield_key(), shield);
 }
 
 public fun equip_armor(hero: &mut Hero, armor: Armor) {
-    assert!(!dof::exists_(&hero.id, armor_key()), EAlreadyEquipped);
-    dof::add(&mut hero.id, armor_key(), armor);
+    attach(hero, armor_key(), armor);
 }
 
 /// Convenience: mint a Sword and attach it in one call.
@@ -155,21 +165,15 @@ public fun mint_and_equip_armor(hero: &mut Hero, name: String, image_url: String
 // Detach and return the item to the caller so the demo can show stats revert live.
 
 public fun unequip_sword(hero: &mut Hero, ctx: &mut TxContext) {
-    assert!(dof::exists_(&hero.id, sword_key()), ENotEquipped);
-    let sword: Sword = dof::remove(&mut hero.id, sword_key());
-    transfer::public_transfer(sword, ctx.sender());
+    detach<Sword>(hero, sword_key(), ctx);
 }
 
 public fun unequip_shield(hero: &mut Hero, ctx: &mut TxContext) {
-    assert!(dof::exists_(&hero.id, shield_key()), ENotEquipped);
-    let shield: Shield = dof::remove(&mut hero.id, shield_key());
-    transfer::public_transfer(shield, ctx.sender());
+    detach<Shield>(hero, shield_key(), ctx);
 }
 
 public fun unequip_armor(hero: &mut Hero, ctx: &mut TxContext) {
-    assert!(dof::exists_(&hero.id, armor_key()), ENotEquipped);
-    let armor: Armor = dof::remove(&mut hero.id, armor_key());
-    transfer::public_transfer(armor, ctx.sender());
+    detach<Armor>(hero, armor_key(), ctx);
 }
 
 // === Display creation ===

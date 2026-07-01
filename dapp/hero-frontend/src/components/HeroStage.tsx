@@ -4,6 +4,7 @@
 import { effectiveStats, HERO_BASE } from '../items';
 import { spriteFor } from '../sprites';
 import type { HeroView } from '../chain';
+import { codePanel } from '../styles';
 
 function StatRow({ label, base, effective }: { label: string; base: number; effective: number }) {
   const boosted = effective > base;
@@ -40,7 +41,7 @@ export function HeroStage({ hero }: { hero: HeroView }) {
           <StatRow label="Defense" base={HERO_BASE.baseDefense} effective={eff.defense} />
         </div>
 
-        <div style={{ background: '#0d1117', color: '#e6edf3', borderRadius: 8, padding: '10px 12px' }}>
+        <div style={{ ...codePanel, borderRadius: 8, padding: '10px 12px' }}>
           <div style={{ fontSize: '0.68rem', color: '#8b949e', marginBottom: 4, letterSpacing: 0.4 }}>
             RESOLVED DISPLAY · <code>inventory</code> — projected live from attached dynamic object fields
           </div>

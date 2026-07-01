@@ -3,6 +3,7 @@
 // difference cards that step demonstrates — the others stay hidden until their
 // step in the cycle. A step strip on top keeps the 9-step narrative visible.
 import { LESSONS, FLOW, CYCLE_STEPS, type Lesson, type Phase } from '../lessons';
+import { codePanel } from '../styles';
 
 function Card({ lesson }: { lesson: Lesson }) {
   return (
@@ -26,8 +27,9 @@ function Card({ lesson }: { lesson: Lesson }) {
             </div>
             <pre
               style={{
+                ...codePanel,
                 margin: 0, fontSize: '0.68rem', lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                background: '#0d1117', color: '#e6edf3', borderRadius: 6, padding: '7px 9px', fontFamily: 'ui-monospace, monospace',
+                borderRadius: 6, padding: '7px 9px',
               }}
             >
               {lesson[v]}
