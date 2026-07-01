@@ -46,10 +46,10 @@ Default (not explicit in the raw prompt, but consistent with its ethos): snippet
 ## Coverage: the nine differences
 
 Across the four states combined, every difference below appears in **at least one**
-snippet. A difference may span more than one snippet, a snippet may showcase more than
-one difference where that is natural, and distribution across states may be uneven —
-what matters is total coverage and that every snippet states which difference(s) it
-showcases. Default preference: one difference per snippet, for clarity.
+snippet. Each snippet showcases exactly **one** difference. The same difference may be
+showcased by more than one snippet when it is relevant at different points of the
+lifecycle (e.g. one facet at mint time, another once the hero is equipped), and
+distribution across states may be uneven — what matters is total coverage.
 
 | Difference | Guide section |
 |---|---|
