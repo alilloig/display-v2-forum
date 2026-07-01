@@ -1,5 +1,9 @@
 # Code Forge build state — local, regeneratable from the spec; not part of the deliverable
 .forge/
+.claude/
+.claire/
+.clone/
+docs/superpowers/
 
 # Stray Sui ephemeral publication files (test-publish default pubfile)
 Pub*.toml
