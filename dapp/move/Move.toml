@@ -1,6 +1,0 @@
-[package]
-name = "display_showcase"
-edition = "2024"
-
-[addresses]
-display_showcase = "0x0"
