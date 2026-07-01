@@ -1,12 +1,10 @@
-# Display V2: The New Display Standard for Sui
+# Display V2 vs V1: What Changed
 
-## What is Object Display?
+## What Object Display is (unchanged across versions)
 
-Object Display is Sui's **template engine for off-chain representation** of on-chain objects. It lets you define how objects appear in wallets, explorers, and marketplaces — without storing presentation data inside each object.
+Object Display is Sui's **template engine for off-chain representation** of on-chain objects. It defines how objects appear in wallets, explorers, and marketplaces — without storing presentation data inside each object. A Display holds named template strings for a type `T`; templates use `{field_name}` syntax to reference struct fields, which Sui substitutes with actual values at query time.
 
-A `Display<T>` object holds named template strings for a type `T`. Templates use `{field_name}` syntax to reference struct fields, which Sui substitutes with actual values at query time.
-
-**Standard properties:**
+The **standard properties** are the same in both versions:
 
 | Property | Purpose |
 |----------|---------|
@@ -18,8 +16,203 @@ A `Display<T>` object holds named template strings for a type `T`. Templates use
 | `project_url` | Associated website |
 | `creator` | Creator attribution |
 
-**Example template:**
-```json
+Everything else — how you *create* a Display, how it's *stored*, how indexers *find* it, and what the templates can *express* — changed in V2. This document is organized around those deltas.
+
+---
+
+## The differences at a glance
+
+| Dimension | Display V1 (`sui::display`) | Display V2 (`sui::display_registry`) |
+|-----------|-----------------------------|--------------------------------------|
+| **Authorization** | `Publisher` object required | `Publisher` **or** `internal::Permit` (no Publisher needed) |
+| **Where you create it** | Inside `init()` | Separate `entry` function (registry is shared, can't be received in `init`) |
+| **Discovery / indexing** | Scan `DisplayVersionUpdatedEvent` history | Deterministic lookup in `DisplayRegistry` at `0xd` |
+| **Cardinality** | Any number of `Display<T>` per type | Exactly **one** per type, enforced |
+| **Object model** | One owned `Display<T>` object | Shared `Display<T>` + owned `DisplayCap<T>` |
+| **Type constraint** | `T: key` required | Any `T` (constraint relaxed) |
+| **Versioning** | None | Versioned template language |
+| **Field API** | Bulk `new_with_fields(keys, values)` + `update_version()` | Individual `set` / `unset` / `clear` |
+| **Templating** | Top-level + nested `{field}` paths | + indexing, dynamic-field loads (`->`/`=>`/`~>`), transforms (`:json` etc.), fallbacks |
+| **RPC** | JSON-RPC + GraphQL (both deprecating) | JSON-RPC + GraphQL + **gRPC** (primary) |
+
+The rest of the document walks each row, V1 on the left, V2 on the right.
+
+---
+
+## Why V2 exists
+
+The V2 redesign was driven by four fundamental problems the Sui engineering team identified in V1. They map directly onto the differences below:
+
+1. **Publisher dependency** — a package published without claiming `Publisher` in `init()` could *never* create a Display. → fixed by the `Permit` path.
+2. **Multiple displays per type** — V1 allowed any number of `Display<T>`; the last event emitted by any of them won, creating ambiguity. → fixed by one-per-type enforcement.
+3. **Event-based indexing** — discovery required scanning `DisplayVersionUpdatedEvent` history, which didn't scale with Sui's move toward gRPC/GraphQL. → fixed by the registry.
+4. **No versioning** — with a richer template engine coming, there was no way to version templates. → fixed by built-in versioning.
+
+---
+
+## Difference 1 — Authorization & creation
+
+| | V1 | V2 |
+|---|---|---|
+| Proof of type ownership | `Publisher` object (mandatory) | `Publisher` **or** `internal::Permit` |
+| Failure mode | No Publisher claimed in `init()` → Display impossible, forever | `Permit` proves ownership through the module system — no object required |
+
+V1 had exactly one path. V2 has two, and the second removes the hard dependency:
+
+```move
+// V1 — Publisher is the only key
+let display = display::new_with_fields<Hero>(&publisher, keys, values, ctx);
+```
+
+```move
+// V2, path A — familiar Publisher pattern
+let (display, cap) = display_registry::new_with_publisher<Hero>(registry, publisher, ctx);
+
+// V2, path B — Permit, no Publisher needed (preferred long-term)
+let permit = internal::permit<MyType>();
+let (display, cap) = registry.new(permit, ctx);
+```
+
+The `Permit` pattern is the preferred long-term approach — it proves type ownership through the module system without requiring a Publisher object to have been claimed at publish time.
+
+---
+
+## Difference 2 — Where you create it
+
+| | V1 | V2 |
+|---|---|---|
+| Location | Inside `init()` | A separate `entry` function |
+| Reason | Publisher is created in `init()`, so Display could be too | `DisplayRegistry` is a **shared** object and cannot be received in `init()` |
+
+This is a direct consequence of the registry being shared. `init()` runs at publish time with no access to shared objects, so Display creation must move to a later transaction that takes the registry as an argument. See the [full side-by-side code](#the-full-code-side-by-side) below.
+
+---
+
+## Difference 3 — Discovery & indexing
+
+| | V1 | V2 |
+|---|---|---|
+| How indexers find the active Display | Scan historical `DisplayVersionUpdatedEvent` emissions | Deterministic dynamic-field lookup on `DisplayRegistry` at `0xd` |
+| Scalability | Fragile; poor fit for gRPC/GraphQL | Simple live-object query on a known address |
+
+V2 introduces `DisplayRegistry`, a **shared system object** living at the well-known address `0xd` (similar to how `Clock` lives at `0x6`):
+
+```
+DisplayRegistry (0xd)
+└── data: Bag
+    ├── TypeName<Hero> → Display<Hero> fields
+    ├── TypeName<Capy> → Display<Capy> fields
+    └── TypeName<NFT>  → Display<NFT> fields
+```
+
+The registry uses a `Bag`, so both keys and values can evolve in the future; Display data is stored as dynamic fields keyed by type name. **Why this matters:** instead of scanning event history, a client computes the deterministic Display ID for any type via a dynamic-field query on a known address. No special indexing required, and no `update_version()` call to trigger it (see Difference 8).
+
+---
+
+## Difference 4 — Cardinality
+
+| | V1 | V2 |
+|---|---|---|
+| Displays per type | Any number | Exactly **one**, enforced by the registry |
+| Consequence | Ambiguous — "last event wins" across all Display objects | Unambiguous — the registry entry *is* the Display |
+
+An on-chain analysis before migration found **no cases** of multiple Display objects per type in practice, confirming the design decision cost nothing real and removed a foot-gun.
+
+---
+
+## Difference 5 — Object model
+
+| | V1 | V2 |
+|---|---|---|
+| Objects produced | One `Display<T>` | `Display<T>` **+** `DisplayCap<T>` |
+| `Display<T>` ownership | Owned (transferred to creator) | **Shared** |
+| Who can read fields | The owner | Anyone (it's shared) |
+| Who can modify fields | The owner | Only the `DisplayCap<T>` holder |
+
+| Object | Type | Ownership | Purpose |
+|--------|------|-----------|---------|
+| `Display<T>` | `display_registry::Display<T>` | **Shared** | Holds template fields. Indexers read from this. |
+| `DisplayCap<T>` | `display_registry::DisplayCap<T>` | **Owned** (transferred to creator) | Authorizes field modifications. |
+
+The read/write split is the point: the Display is publicly readable but cannot be accidentally transferred, frozen, or destroyed, and only the cap holder can mutate it. V1 conflated read and write authority into a single owned object.
+
+---
+
+## Difference 6 — Type constraint
+
+| | V1 | V2 |
+|---|---|---|
+| Bound on `T` | `T: key` required | Any `T` |
+
+V1 restricted Display to types with the `key` ability. V2 relaxes this — Display can now describe any type, not just top-level on-chain objects.
+
+---
+
+## Difference 7 — Versioning
+
+| | V1 | V2 |
+|---|---|---|
+| Template-language versioning | None | Built-in |
+
+V1 had no mechanism to evolve the template language. V2 versions it, which is what makes the richer templating in Difference 9 possible without breaking existing displays.
+
+---
+
+## Difference 8 — Field API
+
+| | V1 | V2 |
+|---|---|---|
+| Setting fields | Bulk: `new_with_fields(keys, values)` | Individual: `display.set(&cap, key, value)` |
+| Removing fields | (recreate) | `display.unset(&cap, key)` / `display.clear(&cap)` |
+| Triggering indexing | Manual `display.update_version()` | Automatic — registry handles it |
+| Authorization for edits | Owns the Display | Holds the `DisplayCap<T>` |
+
+```move
+// V1 — bulk set, then manually bump the version to emit the indexing event
+let mut display = display::new_with_fields<Hero>(&publisher, keys, values, ctx);
+display.update_version();
+```
+
+```move
+// V2 — set fields one at a time; no update_version() needed
+display.set(&cap, b"name".to_string(), b"{name}".to_string());
+display.unset(&cap, b"old_field".to_string()); // remove one
+display.clear(&cap);                            // remove all
+```
+
+All V2 modifications require the `DisplayCap<T>` for authorization.
+
+---
+
+## Difference 9 — Templating: the engine changes
+
+This is the headline capability upgrade. Both versions read top-level fields and nested dot paths; V1 stops there. V2 templates are full **format strings** — literal text mixed with `{...}` expressions — and each expression has the shape:
+
+```
+{ chain | alternate | ... : transform }
+```
+
+The `chain` walks the object; each `| alternate` is a fallback tried in order; the trailing `: transform` controls how the resolved value is rendered.
+
+| Capability | V1 | V2 |
+|-----------|----|----|
+| Top-level `{field}` interpolation | ✅ | ✅ |
+| Nested dot paths (`{inner.value}`, `{url.url.bytes}`) | ✅ | ✅ |
+| Positional access (`{pos.0}`, `{tuple.0.1}`) | ❌ | ✅ |
+| Vector / array indexing (typed index) | ❌ | ✅ `{items[0u64]}` |
+| `VecMap` / set key lookup | ❌ | ✅ `{scores[6u32]}` |
+| Dynamic field load | ❌ | ✅ `->` (`{parent->['key']}`, 1 load) |
+| Dynamic object field load | ❌ | ✅ `=>` (`{parent=>['key'].x}`, 2 loads) |
+| Derived object load | ❌ | ✅ `~>` (`{registry~>[$self]}`, 1 load) |
+| `Option` auto-unwrap (`None` → null) | ❌ | ✅ |
+| Enum variant-aware field access | ❌ | ✅ |
+| Default / fallback values | ❌ | ✅ `{name \| 'Unknown'}` |
+| Output transforms | ❌ | ✅ `:hex` `:base64` `:bcs` `:json` `:ts` `:url` |
+
+**Roots.** `{name}` is implicit `$self` — i.e. `{name}` == `{$self.name}`; you can also write `$self` explicitly.
+
+```jsonc
+// V1 template — top-level + nested dot paths only
 {
   "name": "{name}",
   "image_url": "https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blob_id}",
@@ -27,86 +220,31 @@ A `Display<T>` object holds named template strings for a type `T`. Templates use
 }
 ```
 
-When a wallet queries a `Hero` object with `name: "Alice"` and `blob_id: "abc123"`, Sui resolves the templates into concrete values.
-
----
-
-## Why V2?
-
-The original Display (V1) had four fundamental problems identified by the Sui engineering team:
-
-### 1. Publisher dependency
-
-Display V1 requires a `Publisher` object to operate. If a package was published without claiming the Publisher in `init()`, developers could **never** create Display objects for their types.
-
-### 2. Multiple displays per type
-
-V1 allowed creating **any number** of `Display<T>` objects for the same type. This made no sense — which one should wallets use? The last event emitted by any Display object was treated as active, creating ambiguity.
-
-### 3. Event-based indexing
-
-Display V1 relied on `DisplayVersionUpdatedEvent` emissions for indexers to discover the active Display for a type. This approach:
-- Required scanning historical events to find the correct Display
-- Didn't scale with Sui's evolution toward gRPC and GraphQL infrastructure
-- Made indexing fragile and hard to maintain
-
-### 4. No versioning
-
-With a V2 template engine on the way (supporting richer syntax), there was no mechanism to version Display templates or evolve the system.
-
----
-
-## Design Goals
-
-From the engineering design document, Display V2 aims to:
-
-1. **Fix indexing** — replace event scanning with a deterministic registry lookup
-2. **One per type** — enforce exactly one Display per type
-3. **Use `internal::Permit`** — support type-based access without Publisher
-4. **Add versioning** — support template language updates
-5. **Snapshot migration** — migrate all existing displays automatically
-6. **Relax type constraint** — remove the `T: key` requirement (any `T` works)
-7. **Deprecate V1** — mark previous functions and Display type as deprecated
-
----
-
-## Architecture
-
-### DisplayRegistry — the central system object
-
-Display V2 introduces `DisplayRegistry`, a **shared system object** living at the well-known address `0xd` (similar to how `Clock` lives at `0x6`).
-
-```
-DisplayRegistry (0xd)
-├── data: Bag
-│   ├── TypeName<Hero>    → Display<Hero> fields
-│   ├── TypeName<Capy>    → Display<Capy> fields
-│   └── TypeName<NFT>     → Display<NFT> fields
+```jsonc
+// V2 template — indexing, loads, transforms, fallbacks
+{
+  "name": "{name}",                            // implicit $self root
+  "power": "{stats.attack}",                   // nested dot path (also valid in V1)
+  "top_item": "{items[0u64]}",                 // vector index — typed index required
+  "score": "{scores[6u32]}",                   // VecMap lookup by key
+  "rank": "{traits->['rank']}",                // dynamic field load (->), 1 object load
+  "guild": "{registry~>[$self]}",              // derived object load (~>)
+  "loadout": "{items:json}",                   // JSON transform
+  "image_url": "{image | 'https://ex/default.png'}"  // fallback when the field is unset
+}
 ```
 
-The registry uses a `Bag` for storage, which allows the data format (both keys and values) to evolve in the future. Display data is stored as dynamic fields keyed by type name.
+**Transforms** (the `: transform` suffix): `:str` (default), `:hex`, `:base64(url,nopad)`, `:bcs`, `:json`, `:timestamp`/`:ts` (ISO-8601 from Unix ms), `:url` (percent-encode). As of `mainnet-v1.70.2` the engine implicitly applies `:json` to fields the default `:str` transform can't render.
 
-**Why this matters for indexers:** Instead of scanning historical events, clients can compute the deterministic Display ID for any type by looking it up in the live object set — a simple dynamic field query on a known address. No special indexing required.
+**Limits.** A template is bounded by `max_depth` 32, `max_nodes` 32,768, and `max_loads` 8 (each `->` costs 1, `=>` costs 2). Exceeding them raises `TooDeep` / `TooBig` / `TooManyLoads`; a bad transform raises `TransformInvalid`. Design templates so a missing optional field degrades to `null`/fallback rather than nulling the whole string.
 
-### Two objects per Display
-
-V2 produces two objects instead of one:
-
-| Object | Type | Ownership | Purpose |
-|--------|------|-----------|---------|
-| `Display<T>` | `display_registry::Display<T>` | **Shared** | Holds template fields. Indexers read from this. |
-| `DisplayCap<T>` | `display_registry::DisplayCap<T>` | **Owned** (transferred to creator) | Authorizes field modifications. |
-
-This separation means:
-- Anyone can **read** Display fields (it's shared)
-- Only the `DisplayCap` holder can **modify** fields
-- The Display cannot be accidentally transferred, frozen, or destroyed
+**No collection-level object type.** V2 has no dedicated "collection" type. The idiomatic pattern is to give the collection/registry object its own `Display<Collection>` and have each item's template cross-load shared metadata via `->` / `=>` / `~>`, instead of baking duplicated strings into every object (a common V1 gas hack).
 
 ---
 
-## V1 vs V2: Code Comparison
+## The full code, side by side
 
-### Display V1 — everything in `init()`
+### V1 — everything in `init()`
 
 ```move
 module display::hero;
@@ -148,13 +286,7 @@ fun init(otw: HERO, ctx: &mut TxContext) {
 }
 ```
 
-**Key characteristics:**
-- Display created in `init()` alongside Publisher
-- Bulk field setting via `new_with_fields(keys, values)`
-- Must call `update_version()` to emit the indexing event
-- Both Publisher and Display transferred as owned objects
-
-### Display V2 — separate entry function
+### V2 — separate entry function
 
 ```move
 module display::hero;
@@ -202,67 +334,13 @@ entry fun create_display(
 }
 ```
 
-**Key differences:**
-- `init()` only claims Publisher — no Display creation
-- Display created in a **separate entry function** because `DisplayRegistry` is a shared object (can't be received in `init()`)
-- Returns a tuple: `(Display<T>, DisplayCap<T>)`
-- Fields set individually with `display.set(&cap, key, value)`
-- No `update_version()` needed — registry handles indexing
-- Display is **shared**, DisplayCap is **transferred**
+Reading top to bottom, every difference above shows up in this diff: `init()` shrinks to just the Publisher claim (Diff 2); creation moves into `create_display` taking the shared `registry` (Diff 2/3); the call returns `(Display, DisplayCap)` (Diff 5); fields are set individually (Diff 8); there's no `update_version()` (Diff 3/8); and the Display is **shared** while the cap is **transferred** (Diff 5).
 
 ---
 
-## V2 API Surface
+## TypeScript / PTB
 
-### Creation
-
-Two paths to create a Display:
-
-**1. With Publisher (familiar pattern):**
-```move
-let (display, cap) = display_registry::new_with_publisher<Hero>(
-    registry, publisher, ctx,
-);
-```
-
-**2. With internal::Permit (no Publisher needed):**
-```move
-let permit = internal::permit<MyType>();
-let (display, cap) = registry.new(permit, ctx);
-```
-
-The `Permit` pattern is the preferred long-term approach — it proves type ownership through the module system without requiring a Publisher object.
-
-### Field management
-
-```move
-// Set a field (idempotent — adds or updates)
-display.set(&cap, b"name".to_string(), b"{name}".to_string());
-
-// Remove a specific field
-display.unset(&cap, b"old_field".to_string());
-
-// Clear all fields
-display.clear(&cap);
-```
-
-All modifications require the `DisplayCap<T>` for authorization.
-
-### Lifecycle
-
-```move
-// Share the Display (makes it readable by indexers)
-display.share();
-
-// Transfer the cap to retain modification rights
-transfer::public_transfer(cap, ctx.sender());
-```
-
----
-
-## TypeScript SDK
-
-Display V2 works through programmable transaction blocks (PTBs). Here's how to create a Display off-chain:
+In V1, Display creation happened automatically inside `init()` at publish time, so there was typically no client-side Display code. In V2 you drive creation through a programmable transaction block (PTB):
 
 ```typescript
 import { Transaction } from "@mysten/sui/transactions";
@@ -279,7 +357,7 @@ let [display, cap] = tx.moveCall({
     typeArguments: [`${PACKAGE_ID}::hero::Hero`],
 });
 
-// 2. Set fields individually
+// 2. Set fields individually (no bulk setter)
 const keys = ["name", "image_url", "description"];
 const values = [
     "{name}",
@@ -310,115 +388,71 @@ tx.moveCall({
 tx.transferObjects([cap], tx.pure.address(MY_ADDRESS));
 ```
 
-Key points:
+Key points, all echoing the differences above:
 - `DisplayRegistry` is at the well-known address `0xd`
 - `typeArguments` must match the exact type from your package
-- Fields are set one at a time (no bulk setter)
-- Display must be shared, Cap transferred
+- Fields are set one at a time (Diff 8 — no bulk setter)
+- Display must be shared, cap transferred (Diff 5)
 
 ---
 
-## Migration
+## Reference appendix
 
-### Automatic system migration
+These sections cover the *transition* mechanics between the two versions, not format differences.
 
-When Display V2 launched, all ~4,500 existing V1 Display objects on mainnet were **automatically migrated** via a system snapshot. Most projects required no action.
+### Migration
 
-An on-chain analysis found:
-- No cases of multiple Display objects per type (confirming the design decision)
+**Automatic system migration.** When Display V2 launched, all ~4,500 existing V1 Display objects on mainnet were **automatically migrated** via a system snapshot. Most projects required no action. The pre-migration on-chain analysis found:
+
+- No cases of multiple Display objects per type (confirming Diff 4)
 - No on-chain Display dependencies (confirming backward compatibility is safe to drop)
 - Some projects wrap Publisher + Display in manager objects
 
-### Phased migration strategy
+**Phased migration strategy:**
 
 | Phase | Action |
 |-------|--------|
 | 1. System migration | Automatic snapshot converts all V1 displays to V2 |
-| 2. Claim DisplayCap | Holders burn old V1 Display to claim V2 DisplayCap |
+| 2. Claim DisplayCap | Holders burn old V1 Display to claim V2 `DisplayCap` |
 | 3. Disable V1 | `sui::display::new` becomes non-callable (July 31, 2026) |
 | 4. Second sweep | Catches projects published between Phase 1 and Phase 3 |
 
-### How to claim a DisplayCap for a migrated display
+**Claiming a `DisplayCap` for a migrated display:**
+- **If you have the Publisher:** use it to claim a `DisplayCap` for the migrated V2 Display
+- **If you have the old V1 Display:** burn it to claim the new `DisplayCap`
 
-If your V1 Display was auto-migrated and you need to modify it:
+**For new packages:** just use `sui::display_registry` instead of `sui::display`. Nothing to migrate.
 
-- **If you have the Publisher:** Use it to claim a `DisplayCap` for the migrated V2 Display
-- **If you have the old V1 Display:** Burn it to claim the new `DisplayCap`
-
-### For new packages
-
-Simply use `sui::display_registry` instead of `sui::display`. There's nothing to migrate.
-
-### Storage model caveat
-
+**Storage-model caveat:**
 - **Frozen** V1 displays: auto-migrated by the system
 - **Shared** V1 displays: these were vulnerable by design (anyone with `&mut Display<T>` could modify them). Migration handles them, but their previous exposure remains a consideration.
 
----
-
-## RPC Support
+### RPC support
 
 | Interface | V1 Display | V2 Display |
 |-----------|-----------|-----------|
 | JSON-RPC (`showDisplay`) | Supported until Q2 2026 deprecation | Supported (primary lookup) |
-| GraphQL | Supported (will be deprecated after migration period) | Supported (primary) |
-| gRPC | Not supported | Supported |
+| GraphQL | Supported (deprecated after migration period) | Supported (primary) |
+| gRPC | Not supported | **Supported** |
 
-V2 is the primary lookup path for all new infrastructure. V1 support is maintained during the transition but will be removed.
+V2 is the primary lookup path for all new infrastructure; V1 support is maintained during the transition but will be removed.
 
----
-
-## Timeline
+### Timeline
 
 | Date | Event |
 |------|-------|
-| April 2026 | Display V2 launches with Sui v1.68. `DisplayRegistry` system object created at `0xd`. |
+| April 2026 | Display V2 launches with Sui v1.68. `DisplayRegistry` created at `0xd`. |
 | April 2026 | System snapshot migrates all ~4,500 V1 displays automatically. |
 | Q2 2026 | JSON-RPC deprecated entirely. |
 | **July 31, 2026** | **`sui::display::new` becomes non-callable.** V1 Display creation disabled. |
 | Post-July 2026 | Second migration sweep for in-between projects. V1 GraphQL support deprecated. |
 
-### What you need to do
+**What you need to do:**
+- **New packages:** use `sui::display_registry` for all Display creation
+- **Existing packages with owned V1 Display:** claim your `DisplayCap` via Publisher or by burning the old Display
+- **Existing packages wrapping Display:** unwrap the Display so it can be exchanged for the new type. Do not wrap Display objects.
 
-- **New packages:** Use `sui::display_registry` for all Display creation
-- **Existing packages with owned V1 Display:** Claim your `DisplayCap` via Publisher or by burning the old Display
-- **Existing packages wrapping Display:** Unwrap the Display object so it can be exchanged for the new type. Do not wrap Display objects.
-
----
-
-## Advanced: Richer Templates
-
-V2's template engine supports capabilities beyond simple field interpolation:
-
-### Nested field access
-
-```
-"{bar.val}"           → access a field on a nested struct
-"{bar.baz.val}"       → access multiple levels deep
-"{bar.baz.qux.quy.val}" → arbitrary nesting depth
-```
-
-### JSON formatting
-
-```
-"{bar.baz.qux:json}"  → serialize the value as JSON
-```
-
-### Collection traversal
-
-Access individual elements within vectors, sets, and maps — no longer limited to top-level scalar fields.
-
-### Dynamic field references
-
-Load dynamic fields and related on-chain objects for complex display descriptions.
-
-### Default values
-
-Provide fallback content when fields are missing or unset, so displays degrade gracefully.
-
----
-
-## Resources
+### Resources
 
 - [Display V2: How Sui Objects Present Themselves to the World](https://blog.sui.io/display-v2-mainnet/) — launch blog post
 - [Sui Object Display Documentation](https://docs.sui.io/standards/display) — official docs
