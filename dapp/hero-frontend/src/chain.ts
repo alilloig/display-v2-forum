@@ -2,14 +2,37 @@
 // Display + which items are attached), and building the mint / equip / unequip transactions.
 // Reads go through the transport-agnostic Core API (`client.core.*`), so they work the same
 // over the gRPC client this dapp uses as over any other SDK 2.0 client.
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useCurrentClient } from '@mysten/dapp-kit-react';
+import { useCurrentClient, useDAppKit } from '@mysten/dapp-kit-react';
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
 import { PACKAGE_ID } from './deployment';
-import { ITEMS, HERO_BASE, type Slot } from './items';
+import { ITEMS, HERO_BASE, SLOTS, type Slot } from './items';
 
 const HERO_TYPE = `${PACKAGE_ID}::hero::Hero`;
+
+/** Normalized result so callers don't deal with the TransactionResult union. */
+export interface SignResult {
+  ok: boolean;
+  digest?: string;
+  error?: string;
+}
+
+/** Sign and execute through the connected wallet, normalizing the result. */
+export function useSignAndExecute() {
+  const dAppKit = useDAppKit();
+  return useCallback(
+    async (tx: Transaction): Promise<SignResult> => {
+      const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+      if (result.FailedTransaction) {
+        return { ok: false, error: result.FailedTransaction.status.error?.message ?? 'Transaction failed' };
+      }
+      return { ok: true, digest: result.Transaction.digest };
+    },
+    [dAppKit],
+  );
+}
 
 export interface HeroView {
   heroId: string;
@@ -43,8 +66,8 @@ export function useOwnedHero(address: string | null) {
       const equipped = new Set<Slot>();
       for (const f of dofs.dynamicFields) {
         if (!f.name.type.endsWith('::string::String')) continue;
-        const key = bcs.string().parse(f.name.bcs);
-        if (key === 'sword' || key === 'shield' || key === 'armor') equipped.add(key);
+        const key = bcs.string().parse(f.name.bcs) as Slot;
+        if (SLOTS.includes(key)) equipped.add(key);
       }
 
       const display = (first.display?.output ?? {}) as Record<string, string>;

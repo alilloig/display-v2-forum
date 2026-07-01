@@ -7,7 +7,6 @@ export type Slot = 'sword' | 'shield' | 'armor';
 export const SLOTS: Slot[] = ['sword', 'shield', 'armor'];
 
 export interface ItemDef {
-  slot: Slot;
   name: string;
   attack: number; // contribution to Attack
   defense: number; // contribution to Defense
@@ -26,7 +25,6 @@ export const HERO_BASE = {
 
 export const ITEMS: Record<Slot, ItemDef> = {
   sword: {
-    slot: 'sword',
     name: 'Iron Sword',
     attack: 6,
     defense: 0,
@@ -34,7 +32,6 @@ export const ITEMS: Record<Slot, ItemDef> = {
     sprite: '/sprites/hero_sword.png',
   },
   shield: {
-    slot: 'shield',
     name: 'Oak Shield',
     attack: 0,
     defense: 8,
@@ -42,7 +39,6 @@ export const ITEMS: Record<Slot, ItemDef> = {
     sprite: '/sprites/hero_shield.png',
   },
   armor: {
-    slot: 'armor',
     name: 'Plate Armor',
     attack: 2,
     defense: 5,

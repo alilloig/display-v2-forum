@@ -1,7 +1,7 @@
 // The Hero "card": composite sprite for the current equipment set, the immutable base
 // stats, the frontend-computed effective total, and — the headline — the `inventory`
 // string resolved on-chain by the Display template projecting live over attached DOFs.
-import { effectiveStats, HERO_BASE, type Slot } from '../items';
+import { effectiveStats, HERO_BASE } from '../items';
 import { spriteFor } from '../sprites';
 import type { HeroView } from '../chain';
 
@@ -20,7 +20,7 @@ export function HeroStage({ hero }: { hero: HeroView }) {
   const eff = effectiveStats(hero.equipped);
   const sprite = spriteFor(hero.equipped);
   const inventory = hero.display['inventory'] ?? '';
-  const equippedList = [...hero.equipped] as Slot[];
+  const equippedList = [...hero.equipped];
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, alignItems: 'start' }}>

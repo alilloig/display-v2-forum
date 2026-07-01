@@ -11,7 +11,6 @@
     "publish:localnet": "bash ../hero-scripts/publish-localnet.sh"
   },
   "dependencies": {
-    "@dnd-kit/core": "6.3.1",
     "@mysten/dapp-kit-react": "2.0.3",
     "@mysten/sui": "2.17.0",
     "@tanstack/react-query": "5.100.14",

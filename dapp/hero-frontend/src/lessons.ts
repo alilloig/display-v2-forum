@@ -167,6 +167,28 @@ export const FLOW: Record<Phase, (number | 'T')[]> = {
   unequip: [9, 7],
 };
 
+export type CycleAction = 'mint' | 'equip' | 'unequip';
+
+/**
+ * Where the user is in the 9-step cycle: 1 connect · 2 the forge (no hero) ·
+ * 3 mint · 4-6 equip (position tracks how many items are attached) · 7-9
+ * unequip (ditto, counting down). Derived from chain state + the last action,
+ * so a page reload lands on the right step.
+ */
+export function deriveCycle(args: {
+  connected: boolean;
+  hasHero: boolean;
+  equipped: number;
+  lastAction: CycleAction | null;
+}): { phase: Phase; pos: number } {
+  const { connected, hasHero, equipped, lastAction } = args;
+  if (!connected) return { phase: 'connect', pos: 1 };
+  if (!hasHero) return { phase: 'noHero', pos: 2 };
+  if (lastAction === 'unequip') return { phase: 'unequip', pos: 9 - equipped };
+  if (equipped === 0) return { phase: 'minted', pos: 3 };
+  return { phase: 'equip', pos: 3 + equipped };
+}
+
 /** Labels for the 9 steps of the cycle (index = step - 1). */
 export const CYCLE_STEPS = [
   'Connect',

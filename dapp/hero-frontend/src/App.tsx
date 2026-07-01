@@ -3,40 +3,40 @@
 // bottom panel narrates the Display V1→V2 difference behind each step.
 import { useState } from 'react';
 import type { Transaction } from '@mysten/sui/transactions';
+import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
 import { ConnectButton } from '@mysten/dapp-kit-react/ui';
 import { NETWORK, PACKAGE_ID } from './deployment';
-import { useSigner } from './SignerContext';
 import { HeroStage } from './components/HeroStage';
 import { Armory } from './components/Armory';
 import { LessonPanel } from './components/LessonPanel';
-import { useOwnedHero, buildMintHeroTx, buildEquipTx, buildUnequipTx } from './chain';
+import { useOwnedHero, useSignAndExecute, buildMintHeroTx, buildEquipTx, buildUnequipTx } from './chain';
 import { spriteFor } from './sprites';
 import type { Slot } from './items';
-import type { Phase } from './lessons';
+import { deriveCycle, type CycleAction } from './lessons';
 
 export function App() {
-  const { address, signAndExecute } = useSigner();
-  const [lastAction, setLastAction] = useState<'mint' | 'equip' | 'unequip' | null>(null);
+  const address = useCurrentAccount()?.address ?? null;
+  const signAndExecute = useSignAndExecute();
+  const client = useCurrentClient();
+  const [lastAction, setLastAction] = useState<CycleAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [busySlot, setBusySlot] = useState<Slot | null>(null);
   const [error, setError] = useState('');
 
   const { data: hero, isLoading, refetch } = useOwnedHero(address);
 
-  async function run(tx: () => Transaction, action: 'mint' | 'equip' | 'unequip') {
+  async function run(tx: () => Transaction, action: CycleAction): Promise<void> {
     setError('');
     try {
       const r = await signAndExecute(tx());
-      if (!r.ok) { setError(r.error ?? 'Transaction failed'); return false; }
+      if (!r.ok) { setError(r.error ?? 'Transaction failed'); return; }
       setLastAction(action);
-      // Give the fullnode a moment to index the new object state before re-reading,
+      // Wait until the fullnode has indexed the transaction before re-reading,
       // otherwise listOwnedObjects/listDynamicFields can return the pre-tx snapshot.
-      await new Promise((res) => setTimeout(res, 800));
+      if (r.digest) await client.core.waitForTransaction({ digest: r.digest });
       await refetch();
-      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      return false;
     }
   }
 
@@ -55,24 +55,12 @@ export function App() {
     try { await run(() => buildUnequipTx(hero.heroId, slot), 'unequip'); } finally { setBusySlot(null); }
   }
 
-  // Where the user is in the 9-step cycle: 1 connect · 2 the forge (no hero) ·
-  // 3 mint · 4-6 equip (position tracks how many items are attached) · 7-9
-  // unequip (ditto, counting down). Derived from chain state + the last action,
-  // so a page reload lands on the right step.
-  let phase: Phase;
-  let pos: number;
-  const equippedCount = hero?.equipped.size ?? 0;
-  if (!address) {
-    phase = 'connect'; pos = 1;
-  } else if (!hero) {
-    phase = 'noHero'; pos = 2;
-  } else if (lastAction === 'unequip') {
-    phase = 'unequip'; pos = 9 - equippedCount;
-  } else if (equippedCount === 0) {
-    phase = 'minted'; pos = 3;
-  } else {
-    phase = 'equip'; pos = 3 + equippedCount;
-  }
+  const { phase, pos } = deriveCycle({
+    connected: !!address,
+    hasHero: !!hero,
+    equipped: hero?.equipped.size ?? 0,
+    lastAction,
+  });
 
   const deployed = PACKAGE_ID && !PACKAGE_ID.startsWith('0x0000');
 
