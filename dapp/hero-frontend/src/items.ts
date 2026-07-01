@@ -13,7 +13,6 @@ export interface ItemDef {
   defense: number; // contribution to Defense
   summary: string; // projected verbatim into the Hero's `inventory` Display field
   sprite: string; // per-item art (public/sprites)
-  move_fn: `mint_and_equip_${Slot}`;
 }
 
 export const HERO_BASE = {
@@ -33,7 +32,6 @@ export const ITEMS: Record<Slot, ItemDef> = {
     defense: 0,
     summary: '[Iron Sword +6 ATK] ',
     sprite: '/sprites/hero_sword.png',
-    move_fn: 'mint_and_equip_sword',
   },
   shield: {
     slot: 'shield',
@@ -42,7 +40,6 @@ export const ITEMS: Record<Slot, ItemDef> = {
     defense: 8,
     summary: '[Oak Shield +8 DEF] ',
     sprite: '/sprites/hero_shield.png',
-    move_fn: 'mint_and_equip_shield',
   },
   armor: {
     slot: 'armor',
@@ -51,7 +48,6 @@ export const ITEMS: Record<Slot, ItemDef> = {
     defense: 5,
     summary: '[Plate Armor +5 DEF +2 ATK] ',
     sprite: '/sprites/hero_armor.png',
-    move_fn: 'mint_and_equip_armor',
   },
 };
 

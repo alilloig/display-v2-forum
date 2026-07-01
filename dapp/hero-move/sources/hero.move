@@ -190,29 +190,27 @@ public fun create_displays(
     display_registry::share(hero_display);
     transfer::public_transfer(hero_cap, ctx.sender());
 
-    // --- Sword ---
-    let (mut sword_display, sword_cap) = display_registry::new_with_publisher<Sword>(registry, publisher, ctx);
-    sword_display.set(&sword_cap, b"name".to_string(), b"{name}".to_string());
-    sword_display.set(&sword_cap, b"image_url".to_string(), b"{image_url}".to_string());
-    sword_display.set(&sword_cap, b"attack".to_string(), b"+{attack} ATK".to_string());
-    display_registry::share(sword_display);
-    transfer::public_transfer(sword_cap, ctx.sender());
+    // --- Items: each type gets its own Display<T> (name + image_url + one stat field) ---
+    create_item_display<Sword>(registry, publisher, b"attack", b"+{attack} ATK", ctx);
+    create_item_display<Shield>(registry, publisher, b"defense", b"+{defense} DEF", ctx);
+    create_item_display<Armor>(registry, publisher, b"defense", b"+{defense} DEF / +{attack} ATK", ctx);
+}
 
-    // --- Shield ---
-    let (mut shield_display, shield_cap) = display_registry::new_with_publisher<Shield>(registry, publisher, ctx);
-    shield_display.set(&shield_cap, b"name".to_string(), b"{name}".to_string());
-    shield_display.set(&shield_cap, b"image_url".to_string(), b"{image_url}".to_string());
-    shield_display.set(&shield_cap, b"defense".to_string(), b"+{defense} DEF".to_string());
-    display_registry::share(shield_display);
-    transfer::public_transfer(shield_cap, ctx.sender());
-
-    // --- Armor ---
-    let (mut armor_display, armor_cap) = display_registry::new_with_publisher<Armor>(registry, publisher, ctx);
-    armor_display.set(&armor_cap, b"name".to_string(), b"{name}".to_string());
-    armor_display.set(&armor_cap, b"image_url".to_string(), b"{image_url}".to_string());
-    armor_display.set(&armor_cap, b"defense".to_string(), b"+{defense} DEF / +{attack} ATK".to_string());
-    display_registry::share(armor_display);
-    transfer::public_transfer(armor_cap, ctx.sender());
+/// Create a shared `Display<T>` for an item type: `name` + `image_url` + one stat field,
+/// then share it and hand the cap to the deployer. Shared by all three item types.
+fun create_item_display<T>(
+    registry: &mut DisplayRegistry,
+    publisher: &mut Publisher,
+    stat_key: vector<u8>,
+    stat_template: vector<u8>,
+    ctx: &mut TxContext,
+) {
+    let (mut display, cap) = display_registry::new_with_publisher<T>(registry, publisher, ctx);
+    display.set(&cap, b"name".to_string(), b"{name}".to_string());
+    display.set(&cap, b"image_url".to_string(), b"{image_url}".to_string());
+    display.set(&cap, stat_key.to_string(), stat_template.to_string());
+    display_registry::share(display);
+    transfer::public_transfer(cap, ctx.sender());
 }
 
 // === Tests ===

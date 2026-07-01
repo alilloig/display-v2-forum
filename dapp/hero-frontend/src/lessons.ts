@@ -147,5 +147,4 @@ export const FLOW: Record<string, (number | 'T')[]> = {
   mintHero: [1, 2, 5, 6],
   equip: [9, 8],
   unequip: [9],
-  discover: [3, 4, 7],
 };

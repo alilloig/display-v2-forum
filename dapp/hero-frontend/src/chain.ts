@@ -31,11 +31,11 @@ export interface HeroView {
   equipped: Set<Slot>;
 }
 
-export function useOwnedHero(address: string | null, refetchKey: number) {
+export function useOwnedHero(address: string | null) {
   const client = useCurrentClient() as unknown as ReadClient;
 
   return useQuery<HeroView | null>({
-    queryKey: ['owned-hero', address, refetchKey],
+    queryKey: ['owned-hero', address],
     enabled: !!address,
     queryFn: async () => {
       if (!address) return null;
@@ -90,16 +90,17 @@ export function buildEquipTx(heroId: string, slot: Slot): Transaction {
     tx.pure.string(item.name),
     tx.pure.string(item.sprite),
   ];
+  // Armor carries two stats; sword/shield one — mirroring the Move signatures.
   if (slot === 'armor') {
     tx.moveCall({
-      target: `${PACKAGE_ID}::hero::mint_and_equip_armor`,
+      target: `${PACKAGE_ID}::hero::mint_and_equip_${slot}`,
       // (hero, name, image_url, attack, defense, summary, ctx)
       arguments: [...common, tx.pure.u64(BigInt(item.attack)), tx.pure.u64(BigInt(item.defense)), tx.pure.string(item.summary)],
     });
   } else {
     const stat = slot === 'sword' ? item.attack : item.defense;
     tx.moveCall({
-      target: `${PACKAGE_ID}::hero::${item.move_fn}`,
+      target: `${PACKAGE_ID}::hero::mint_and_equip_${slot}`,
       // (hero, name, image_url, attack|defense, summary, ctx)
       arguments: [...common, tx.pure.u64(BigInt(stat)), tx.pure.string(item.summary)],
     });

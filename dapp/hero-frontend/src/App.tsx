@@ -2,6 +2,7 @@
 // watch the Hero's Display projection change while its on-chain fields stay fixed. The
 // bottom panel narrates the Display V1→V2 difference behind each step.
 import { useState } from 'react';
+import type { Transaction } from '@mysten/sui/transactions';
 import { ConnectButton } from '@mysten/dapp-kit-react/ui';
 import { NETWORK, PACKAGE_ID } from './deployment';
 import { useSigner } from './SignerContext';
@@ -10,19 +11,19 @@ import { HeroStage } from './components/HeroStage';
 import { Armory } from './components/Armory';
 import { LessonPanel } from './components/LessonPanel';
 import { useOwnedHero, buildMintHeroTx, buildEquipTx, buildUnequipTx } from './chain';
+import { spriteFor } from './sprites';
 import type { Slot } from './items';
 
 export function App() {
   const { address, signAndExecute } = useSigner();
-  const [refetchKey, setRefetchKey] = useState(0);
   const [step, setStep] = useState('connect');
   const [busy, setBusy] = useState(false);
   const [busySlot, setBusySlot] = useState<Slot | null>(null);
   const [error, setError] = useState('');
 
-  const { data: hero, isLoading, refetch } = useOwnedHero(address, refetchKey);
+  const { data: hero, isLoading, refetch } = useOwnedHero(address);
 
-  async function run(tx: () => ReturnType<typeof buildMintHeroTx>, nextStep: string) {
+  async function run(tx: () => Transaction, nextStep: string) {
     setError('');
     const r = await signAndExecute(tx());
     if (!r.ok) { setError(r.error ?? 'Transaction failed'); return false; }
@@ -30,7 +31,6 @@ export function App() {
     // Give the fullnode a moment to index the new object state before re-reading,
     // otherwise getOwnedObjects/getDynamicFields can return the pre-tx snapshot.
     await new Promise((res) => setTimeout(res, 800));
-    setRefetchKey((k) => k + 1);
     await refetch();
     return true;
   }
@@ -88,7 +88,7 @@ export function App() {
           <p style={{ color: '#6b7280' }}>Loading your hero…</p>
         ) : !hero ? (
           <div style={{ padding: '2rem', textAlign: 'center', border: '1px solid #e5e7eb', borderRadius: 12 }}>
-            <img src="/sprites/hero.png" alt="hero" style={{ width: 140, imageRendering: 'pixelated', borderRadius: 8 }} />
+            <img src={spriteFor(new Set())} alt="hero" style={{ width: 140, imageRendering: 'pixelated', borderRadius: 8 }} />
             <p style={{ color: '#4b5563', margin: '10px 0 14px' }}>You don't have a Hero yet. Forge one to begin.</p>
             <button
               type="button"
