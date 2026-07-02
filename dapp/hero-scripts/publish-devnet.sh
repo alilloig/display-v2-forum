@@ -1,17 +1,128 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# publish-devnet.sh — publish hero_forge to devnet and generate deployment.ts.
-# Prerequisites: sui CLI with a devnet env and a funded active address, jq.
+# publish-devnet.sh — build + publish hero_forge to devnet, run create_displays
+# (Hero + Sword + Shield + Armor Displays in one PTB), and write
+# hero-frontend/src/deployment.ts with every resulting identifier.
+#
+# Prerequisites: sui CLI on PATH, jq, a devnet address with gas (the script hits
+# the devnet faucet, which may rate-limit — fund manually if it does).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NETWORK=devnet
+DAPP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MOVE_DIR="${DAPP_DIR}/hero-move"
+FRONTEND_SRC="${DAPP_DIR}/hero-frontend/src"
+
+REGISTRY_ID="0xd"
+PKG_MODULE="hero"   # module name inside the package
+
+# ── 1. Ensure active environment is devnet ───────────────────────────────────
 
 ACTIVE_ENV=$(sui client active-env 2>/dev/null || true)
-if [ "${ACTIVE_ENV}" != "${NETWORK}" ]; then
-    echo "Active env is '${ACTIVE_ENV}', expected '${NETWORK}'." >&2
-    echo "Run: sui client switch --env ${NETWORK}" >&2
-    exit 1
+if [ "${ACTIVE_ENV}" != "devnet" ]; then
+    echo "Switching to devnet environment..."
+    sui client new-env --alias devnet --rpc "https://fullnode.devnet.sui.io:443" 2>/dev/null || true
+    sui client switch --env devnet
+fi
+echo "Active environment: $(sui client active-env)"
+
+# ── 2. Fund the active address if it is low on gas ──────────────────────────
+
+ACTIVE_ADDR=$(sui client active-address)
+echo "Active address: ${ACTIVE_ADDR}"
+BALANCE=$(sui client gas --json 2>/dev/null | jq '[.[] | .mistBalance] | add // 0' 2>/dev/null); BALANCE=${BALANCE:-0}
+if [ "${BALANCE}" -lt 500000000 ]; then
+    echo "Balance low (${BALANCE} MIST) — requesting devnet faucet..."
+    sui client faucet || echo "Faucet request failed (rate limit?) — continuing with current balance."
+    sleep 2
 fi
 
-source "${SCRIPT_DIR}/publish-common.sh"
+# ── 3. Pin the devnet chain id in Move.toml ──────────────────────────────────
+# `sui client publish` requires an [environments] entry for the active env.
+# Devnet is wiped periodically and its chain id changes, so refresh it each run.
+
+CHAIN_ID=$(sui client chain-identifier)
+if grep -q '^\[environments\]' "${MOVE_DIR}/Move.toml"; then
+    sed "s/^devnet = \".*\"/devnet = \"${CHAIN_ID}\"/" "${MOVE_DIR}/Move.toml" > "${MOVE_DIR}/Move.toml.tmp" && mv "${MOVE_DIR}/Move.toml.tmp" "${MOVE_DIR}/Move.toml"
+else
+    printf '\n[environments]\ndevnet = "%s"\n' "${CHAIN_ID}" >> "${MOVE_DIR}/Move.toml"
+fi
+echo "Move.toml [environments] devnet = ${CHAIN_ID}"
+
+# ── 4. Build + publish ───────────────────────────────────────────────────────
+# Fresh publish each run (not an upgrade): devnet is wiped periodically and
+# create_displays must register the types anew, so drop any previous record.
+rm -f "${MOVE_DIR}/Published.toml"
+
+echo "Publishing hero_forge to devnet..."
+PUBLISH_OUTPUT=$(sui client publish "${MOVE_DIR}" \
+    --gas-budget 200000000 \
+    --json)
+
+PACKAGE_ID=$(echo "${PUBLISH_OUTPUT}" \
+    | jq -r '.objectChanges[] | select(.type == "published") | .packageId')
+PUBLISHER_ID=$(echo "${PUBLISH_OUTPUT}" \
+    | jq -r '.objectChanges[] | select(.type == "created" and (.objectType | test("0x2::package::Publisher"))) | .objectId')
+
+[ -n "${PACKAGE_ID}" ] && [ -n "${PUBLISHER_ID}" ] || { echo "ERROR: could not extract packageId/Publisher from publish output" >&2; exit 1; }
+echo "Package ID:   ${PACKAGE_ID}"
+echo "Publisher ID: ${PUBLISHER_ID}"
+
+# ── 5. create_displays (Hero + 3 item Displays, one PTB) ─────────────────────
+
+echo "Running create_displays..."
+CREATE_OUTPUT=$(sui client ptb \
+    --move-call "${PACKAGE_ID}::${PKG_MODULE}::create_displays" \
+        "@${REGISTRY_ID}" \
+        "@${PUBLISHER_ID}" \
+    --gas-budget 100000000 \
+    --json)
+
+# Extract each Display<T> / DisplayCap<T> by its type parameter. Anchor "Display<"
+# so it doesn't also match the DisplayCap objectType.
+display_id_for() {  # $1 = type name (Hero/Sword/Shield/Armor)
+    echo "${CREATE_OUTPUT}" | jq -r \
+        --arg t "$1" \
+        '.objectChanges[] | select(.type=="created" and (.objectType | test("display_registry::Display<.*::hero::" + $t + ">"))) | .objectId'
+}
+cap_id_for() {
+    echo "${CREATE_OUTPUT}" | jq -r \
+        --arg t "$1" \
+        '.objectChanges[] | select(.type=="created" and (.objectType | test("display_registry::DisplayCap<.*::hero::" + $t + ">"))) | .objectId'
+}
+
+HERO_DISPLAY_ID=$(display_id_for Hero)
+HERO_CAP_ID=$(cap_id_for Hero)
+SWORD_DISPLAY_ID=$(display_id_for Sword)
+SWORD_CAP_ID=$(cap_id_for Sword)
+SHIELD_DISPLAY_ID=$(display_id_for Shield)
+SHIELD_CAP_ID=$(cap_id_for Shield)
+ARMOR_DISPLAY_ID=$(display_id_for Armor)
+ARMOR_CAP_ID=$(cap_id_for Armor)
+
+echo "Hero Display:   ${HERO_DISPLAY_ID}"
+echo "Sword Display:  ${SWORD_DISPLAY_ID}"
+echo "Shield Display: ${SHIELD_DISPLAY_ID}"
+echo "Armor Display:  ${ARMOR_DISPLAY_ID}"
+
+# ── 6. Write deployment.ts ───────────────────────────────────────────────────
+
+mkdir -p "${FRONTEND_SRC}"
+cat > "${FRONTEND_SRC}/deployment.ts" <<EOF
+// Auto-generated by hero-scripts/publish-devnet.sh — do not edit by hand.
+export const NETWORK = "devnet";
+export const PACKAGE_ID = "${PACKAGE_ID}";
+export const PUBLISHER_ID = "${PUBLISHER_ID}";
+export const REGISTRY_ID = "${REGISTRY_ID}";
+
+export const DISPLAYS = {
+  hero:   { display: "${HERO_DISPLAY_ID}",   cap: "${HERO_CAP_ID}" },
+  sword:  { display: "${SWORD_DISPLAY_ID}",  cap: "${SWORD_CAP_ID}" },
+  shield: { display: "${SHIELD_DISPLAY_ID}", cap: "${SHIELD_CAP_ID}" },
+  armor:  { display: "${ARMOR_DISPLAY_ID}",  cap: "${ARMOR_CAP_ID}" },
+} as const;
+EOF
+
+echo ""
+echo "deployment.ts written to ${FRONTEND_SRC}/deployment.ts"
+echo "Done."

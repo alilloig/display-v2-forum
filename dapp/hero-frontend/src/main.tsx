@@ -5,9 +5,8 @@ import { DAppKitProvider } from '@mysten/dapp-kit-react';
 import { dAppKit } from './dapp-kit';
 import { App } from './App';
 
-// The app refetches explicitly after each transaction (see App.run), so
-// focus-triggered refetches — fired every time a wallet popup returns focus —
-// would only duplicate those reads.
+// Returning from a wallet popup refocuses the window; without this, every approval
+// double-read the hero. run() refetches explicitly after each transaction anyway.
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 30_000 } },
 });

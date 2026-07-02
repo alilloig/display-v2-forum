@@ -2,5 +2,5 @@
 name = "hero_forge"
 edition = "2024"
 
-[addresses]
-hero_forge = "0x0"
+[environments]
+devnet = "b696f95e"

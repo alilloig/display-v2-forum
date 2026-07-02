@@ -1,37 +1,31 @@
-// All chain I/O in one place: reading the connected wallet's Hero (raw content + resolved
-// Display + which items are attached), and building the mint / equip / unequip transactions.
-// Reads go through the transport-agnostic Core API (`client.core.*`), so they work the same
-// over the gRPC client this dapp uses as over any other SDK 2.0 client.
-import { useCallback } from 'react';
+// All chain I/O in one place: reading the connected wallet's Hero (struct fields +
+// resolved Display + which items are attached), signing, and building the mint / equip /
+// unequip transactions. Reads go through the SDK 2.0 core API (`client.core.*`) over gRPC.
 import { useQuery } from '@tanstack/react-query';
-import { useCurrentClient, useDAppKit } from '@mysten/dapp-kit-react';
+import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
+import { dAppKit } from './dapp-kit';
 import { PACKAGE_ID } from './deployment';
-import { ITEMS, HERO_BASE, SLOTS, type Slot } from './items';
+import { ITEMS, HERO_BASE, type Slot } from './items';
 
 const HERO_TYPE = `${PACKAGE_ID}::hero::Hero`;
 
-/** Normalized result so callers don't deal with the TransactionResult union. */
+/** Normalized signing result so the UI doesn't care about the SDK's union shape. */
 export interface SignResult {
   ok: boolean;
   digest?: string;
   error?: string;
 }
 
-/** Sign and execute through the connected wallet, normalizing the result. */
-export function useSignAndExecute() {
-  const dAppKit = useDAppKit();
-  return useCallback(
-    async (tx: Transaction): Promise<SignResult> => {
-      const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-      if (result.FailedTransaction) {
-        return { ok: false, error: result.FailedTransaction.status.error?.message ?? 'Transaction failed' };
-      }
-      return { ok: true, digest: result.Transaction.digest };
-    },
-    [dAppKit],
-  );
+/** Sign through the connected wallet and normalize the SDK's discriminated union. */
+export async function signAndExecute(tx: Transaction): Promise<SignResult> {
+  const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+  const t = result.$kind === 'FailedTransaction' ? result.FailedTransaction : result.Transaction;
+  if (!t.status.success) {
+    return { ok: false, digest: t.digest, error: t.status.error?.message ?? 'Transaction failed' };
+  }
+  return { ok: true, digest: t.digest };
 }
 
 export interface HeroView {
@@ -55,26 +49,28 @@ export function useOwnedHero(address: string | null) {
         type: HERO_TYPE,
         include: { json: true, display: true },
       });
-      // Deterministic pick when a wallet owns more than one Hero (reachable via double-mint):
-      // sort by objectId so the same Hero renders across reads.
+      // Deterministic pick when a wallet owns more than one Hero (reachable via
+      // double-mint): sort by objectId so the same Hero renders across reads.
       const first = [...owned.objects].sort((a, b) => a.objectId.localeCompare(b.objectId))[0];
       if (!first) return null;
 
-      // Which slots are filled: read the Hero's dynamic object fields. Core API returns
-      // BCS-encoded field names; the keys here are Move Strings.
+      // Which slots are filled: read the Hero's dynamic object fields. The keys are
+      // Move Strings, so each name arrives as BCS bytes.
       const dofs = await client.core.listDynamicFields({ parentId: first.objectId });
       const equipped = new Set<Slot>();
       for (const f of dofs.dynamicFields) {
         if (!f.name.type.endsWith('::string::String')) continue;
-        const key = bcs.string().parse(f.name.bcs) as Slot;
-        if (SLOTS.includes(key)) equipped.add(key);
+        const key = bcs.string().parse(f.name.bcs);
+        if (key === 'sword' || key === 'shield' || key === 'armor') equipped.add(key);
       }
 
-      const display = (first.display?.output ?? {}) as Record<string, string>;
-      const errors = first.display?.errors ?? null;
+      const display: Record<string, string> = {};
+      for (const [k, v] of Object.entries(first.display?.output ?? {})) display[k] = String(v);
+      const errors = first.display?.errors;
+
       return {
         heroId: first.objectId,
-        fields: (first.json ?? {}) as Record<string, unknown>,
+        fields: first.json ?? {},
         display,
         displayError: errors
           ? Object.entries(errors).map(([k, v]) => `${k}: ${v}`).join('; ')

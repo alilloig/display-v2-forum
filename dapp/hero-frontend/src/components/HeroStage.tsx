@@ -1,10 +1,9 @@
 // The Hero "card": composite sprite for the current equipment set, the immutable base
 // stats, the frontend-computed effective total, and — the headline — the `inventory`
 // string resolved on-chain by the Display template projecting live over attached DOFs.
-import { effectiveStats, HERO_BASE } from '../items';
+import { effectiveStats, HERO_BASE, type Slot } from '../items';
 import { spriteFor } from '../sprites';
 import type { HeroView } from '../chain';
-import { codePanel } from '../styles';
 
 function StatRow({ label, base, effective }: { label: string; base: number; effective: number }) {
   const boosted = effective > base;
@@ -21,18 +20,18 @@ export function HeroStage({ hero }: { hero: HeroView }) {
   const eff = effectiveStats(hero.equipped);
   const sprite = spriteFor(hero.equipped);
   const inventory = hero.display['inventory'] ?? '';
-  const equippedList = [...hero.equipped];
+  const equippedList = [...hero.equipped] as Slot[];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, alignItems: 'start' }}>
-      <div style={{ border: '1px solid #e2e2e2', borderRadius: 12, padding: 10, background: '#fafafa', textAlign: 'center' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start' }}>
+      <div style={{ flex: '0 1 260px', border: '1px solid #e2e2e2', borderRadius: 12, padding: 10, background: '#fafafa', textAlign: 'center' }}>
         <img src={sprite} alt="hero" style={{ width: '100%', borderRadius: 8, imageRendering: 'pixelated' }} />
         <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: 4 }}>
           composite sprite · {equippedList.length ? equippedList.sort().join(' + ') : 'unarmed'}
         </div>
       </div>
 
-      <div>
+      <div style={{ flex: '1 1 300px', minWidth: 0 }}>
         <h2 style={{ margin: '0 0 2px' }}>{String(hero.fields['name'] ?? HERO_BASE.name)}</h2>
         <div style={{ fontSize: '0.72rem', color: '#9ca3af', fontFamily: 'monospace', marginBottom: 12, wordBreak: 'break-all' }}>{hero.heroId}</div>
 
@@ -41,7 +40,7 @@ export function HeroStage({ hero }: { hero: HeroView }) {
           <StatRow label="Defense" base={HERO_BASE.baseDefense} effective={eff.defense} />
         </div>
 
-        <div style={{ ...codePanel, borderRadius: 8, padding: '10px 12px' }}>
+        <div style={{ background: '#0d1117', color: '#e6edf3', borderRadius: 8, padding: '10px 12px' }}>
           <div style={{ fontSize: '0.68rem', color: '#8b949e', marginBottom: 4, letterSpacing: 0.4 }}>
             RESOLVED DISPLAY · <code>inventory</code> — projected live from attached dynamic object fields
           </div>

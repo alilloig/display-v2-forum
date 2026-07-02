@@ -1,69 +1,60 @@
 // Hero Forge — connect → mint a Hero → forge & attach items (dynamic object fields) →
 // watch the Hero's Display projection change while its on-chain fields stay fixed. The
-// bottom panel narrates the Display V1→V2 difference behind each step.
+// code lab below shows the Display V1→V2 code behind whatever the dapp is doing now.
 import { useState } from 'react';
 import type { Transaction } from '@mysten/sui/transactions';
 import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
 import { ConnectButton } from '@mysten/dapp-kit-react/ui';
-import { NETWORK, PACKAGE_ID } from './deployment';
+import { NETWORK } from './deployment';
 import { HeroStage } from './components/HeroStage';
 import { Armory } from './components/Armory';
-import { LessonPanel } from './components/LessonPanel';
-import { useOwnedHero, useSignAndExecute, buildMintHeroTx, buildEquipTx, buildUnequipTx } from './chain';
+import { CodeLab } from './components/CodeLab';
+import { useOwnedHero, signAndExecute, buildMintHeroTx, buildEquipTx, buildUnequipTx } from './chain';
 import { spriteFor } from './sprites';
 import type { Slot } from './items';
-import { deriveCycle, type CycleAction } from './lessons';
-import { alertBanner, primaryButton } from './styles';
+import type { AppState } from './snippets';
 
 export function App() {
-  const address = useCurrentAccount()?.address ?? null;
-  const signAndExecute = useSignAndExecute();
   const client = useCurrentClient();
-  const [lastAction, setLastAction] = useState<CycleAction | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [busySlot, setBusySlot] = useState<Slot | null>(null);
+  const address = useCurrentAccount()?.address ?? null;
+  const [pending, setPending] = useState<Slot | 'mint' | null>(null);
   const [error, setError] = useState('');
 
   const { data: hero, isLoading, refetch } = useOwnedHero(address);
 
-  async function run(tx: () => Transaction, action: CycleAction): Promise<void> {
+  async function run(action: Slot | 'mint', tx: () => Transaction) {
+    setPending(action);
     setError('');
     try {
       const r = await signAndExecute(tx());
-      if (!r.ok) { setError(r.error ?? 'Transaction failed'); return; }
-      setLastAction(action);
-      // Wait until the fullnode has indexed the transaction before re-reading,
-      // otherwise listOwnedObjects/listDynamicFields can return the pre-tx snapshot.
-      if (r.digest) await client.core.waitForTransaction({ digest: r.digest });
+      if (!r.ok) {
+        setError(r.error ?? 'Transaction failed');
+        return;
+      }
+      // Re-read only once the fullnode has indexed the transaction, otherwise
+      // listOwnedObjects/listDynamicFields can return the pre-tx snapshot.
+      await client.core.waitForTransaction({ digest: r.digest! });
       await refetch();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPending(null);
     }
   }
 
-  async function onMint() {
-    setBusy(true);
-    try { await run(buildMintHeroTx, 'mint'); } finally { setBusy(false); }
-  }
-  async function onEquip(slot: Slot) {
-    if (!hero) return;
-    setBusySlot(slot);
-    try { await run(() => buildEquipTx(hero.heroId, slot), 'equip'); } finally { setBusySlot(null); }
-  }
-  async function onUnequip(slot: Slot) {
-    if (!hero) return;
-    setBusySlot(slot);
-    try { await run(() => buildUnequipTx(hero.heroId, slot), 'unequip'); } finally { setBusySlot(null); }
-  }
+  const onMint = () => run('mint', buildMintHeroTx);
+  const onEquip = (slot: Slot) => { if (hero) void run(slot, () => buildEquipTx(hero.heroId, slot)); };
+  const onUnequip = (slot: Slot) => { if (hero) void run(slot, () => buildUnequipTx(hero.heroId, slot)); };
 
-  const { phase, pos } = deriveCycle({
-    connected: !!address,
-    hasHero: !!hero,
-    equipped: hero?.equipped.size ?? 0,
-    lastAction,
-  });
-
-  const deployed = PACKAGE_ID && !PACKAGE_ID.startsWith('0x0000');
+  // The code lab is driven by what is actually on chain, not by an internal step
+  // counter: wallet presence, Hero presence, and whether any item is attached.
+  const state: AppState = !address
+    ? 'preconnect'
+    : !hero
+      ? 'noHero'
+      : hero.equipped.size > 0
+        ? 'equipped'
+        : 'minted';
 
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: '1.5rem 1.25rem 4rem', fontFamily: 'system-ui, sans-serif', color: '#111' }}>
@@ -78,14 +69,8 @@ export function App() {
         <ConnectButton />
       </header>
 
-      {!deployed && (
-        <div style={alertBanner}>
-          No deployment found. Run <code>pnpm publish:devnet</code> (from <code>hero-frontend/</code>) to publish the package and generate <code>deployment.ts</code>.
-        </div>
-      )}
-
       {error && (
-        <div style={{ ...alertBanner, marginBottom: 12, wordBreak: 'break-all' }}>
+        <div style={{ padding: 10, background: '#fef2f2', color: '#991b1b', borderRadius: 8, fontSize: '0.82rem', marginBottom: 12, wordBreak: 'break-all' }}>
           {error}
         </div>
       )}
@@ -93,7 +78,7 @@ export function App() {
       <main style={{ marginTop: 16 }}>
         {!address ? (
           <div style={{ padding: '2rem', textAlign: 'center', border: '1px dashed #d1d5db', borderRadius: 12, color: '#6b7280' }}>
-            Connect a wallet to begin — the dapp runs against {NETWORK}, so any Sui wallet on {NETWORK} works.
+            Connect a devnet wallet to begin.
           </div>
         ) : isLoading ? (
           <p style={{ color: '#6b7280' }}>Loading your hero…</p>
@@ -103,11 +88,11 @@ export function App() {
             <p style={{ color: '#4b5563', margin: '10px 0 14px' }}>You don't have a Hero yet. Forge one to begin.</p>
             <button
               type="button"
-              onClick={onMint}
-              disabled={busy}
-              style={{ ...primaryButton, padding: '9px 22px', borderRadius: 8, fontSize: '0.95rem', cursor: busy ? 'wait' : 'pointer' }}
+              onClick={() => void onMint()}
+              disabled={pending !== null}
+              style={{ padding: '9px 22px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: pending ? 'wait' : 'pointer' }}
             >
-              {busy ? 'Minting…' : 'Mint Hero'}
+              {pending === 'mint' ? 'Minting…' : 'Mint Hero'}
             </button>
           </div>
         ) : (
@@ -115,13 +100,13 @@ export function App() {
             <HeroStage hero={hero} />
             <div>
               <h2 style={{ fontSize: '1rem', margin: '0 0 8px' }}>Armory</h2>
-              <Armory equipped={hero.equipped} busySlot={busySlot} onEquip={onEquip} onUnequip={onUnequip} disabled={busy || busySlot !== null} />
+              <Armory equipped={hero.equipped} busySlot={pending !== 'mint' ? pending : null} onEquip={onEquip} onUnequip={onUnequip} disabled={pending !== null} />
             </div>
           </div>
         )}
       </main>
 
-      <LessonPanel phase={phase} pos={pos} />
+      <CodeLab state={state} />
     </div>
   );
 }

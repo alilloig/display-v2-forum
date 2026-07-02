@@ -14,6 +14,16 @@ export interface ItemDef {
   sprite: string; // per-item art (public/sprites)
 }
 
+/** Human label for an item's stat contributions, derived from the numbers. */
+export function statLabel(item: ItemDef): string {
+  return [
+    item.defense > 0 ? `+${item.defense} DEF` : null,
+    item.attack > 0 ? `+${item.attack} ATK` : null,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+}
+
 export const HERO_BASE = {
   name: 'Aragorn',
   baseAttack: 10,
