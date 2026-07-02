@@ -23,15 +23,15 @@ export function HeroStage({ hero }: { hero: HeroView }) {
   const equippedList = [...hero.equipped] as Slot[];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, alignItems: 'start' }}>
-      <div style={{ border: '1px solid #e2e2e2', borderRadius: 12, padding: 10, background: '#fafafa', textAlign: 'center' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start' }}>
+      <div style={{ flex: '0 1 260px', border: '1px solid #e2e2e2', borderRadius: 12, padding: 10, background: '#fafafa', textAlign: 'center' }}>
         <img src={sprite} alt="hero" style={{ width: '100%', borderRadius: 8, imageRendering: 'pixelated' }} />
         <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: 4 }}>
           composite sprite · {equippedList.length ? equippedList.sort().join(' + ') : 'unarmed'}
         </div>
       </div>
 
-      <div>
+      <div style={{ flex: '1 1 300px', minWidth: 0 }}>
         <h2 style={{ margin: '0 0 2px' }}>{String(hero.fields['name'] ?? HERO_BASE.name)}</h2>
         <div style={{ fontSize: '0.72rem', color: '#9ca3af', fontFamily: 'monospace', marginBottom: 12, wordBreak: 'break-all' }}>{hero.heroId}</div>
 

@@ -77,12 +77,14 @@ A suggested (non-binding) state mapping, purely as a starting point:
 
 Each snippet card contains:
 
-1. **A compact difference label** — canonical form `Difference N — <guide title>`. Stated
-   once; never repeated in surrounding headers or captions.
-2. **A concise code excerpt** — trimmed to the minimum that illustrates the difference;
-   never a full-file dump. A V1-vs-V2 comparison is allowed *when it aids comprehension
-   for that difference*, but it must stay readable (stacked V1/V2 is fine; cramped
-   side-by-side is not).
+1. **A compact label** — the guide title of the difference (e.g. `Field API`), with no
+   "Difference N —" prefix. Stated once; never repeated in surrounding headers or
+   captions.
+2. **Real V1 and V2 code as independent cards in parallel** — actual code the way each
+   version was written (no comment-only stand-ins for V1), side by side where width
+   allows and stacking on narrow screens. Each excerpt is trimmed to the minimum that
+   illustrates the difference — never a full-file dump — and syntax-coloured for
+   readability.
 3. **A link to the guide section** (anchors above) — verify the anchor slugs against the
    actual renderer serving the MD; adjust if the guide is served differently (e.g.
    GitHub vs local viewer).
@@ -114,8 +116,8 @@ state") — relevance is implicit.
 1. The code lab area's content is selected by the four app states above, not by an
    internal step counter; no state renders all nine differences at once.
 2. Playing connect → mint → equip surfaces all nine differences at least once.
-3. Every snippet carries a canonical difference label (stated once) and a working link
-   to the matching guide section.
+3. Every snippet carries its difference's guide title as label (stated once, no
+   numbering prefix) and a working link to the matching guide section.
 4. Every snippet is a concise excerpt readable without horizontal scrolling at common
    widths (mobile ~375px through desktop), and at no viewport width do two difference
    snippets share a row.
