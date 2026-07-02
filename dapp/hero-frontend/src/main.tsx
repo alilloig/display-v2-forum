@@ -5,7 +5,11 @@ import { DAppKitProvider } from '@mysten/dapp-kit-react';
 import { dAppKit } from './dapp-kit';
 import { App } from './App';
 
-const queryClient = new QueryClient();
+// Returning from a wallet popup refocuses the window; without this, every approval
+// double-read the hero. run() refetches explicitly after each transaction anyway.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 30_000 } },
+});
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
