@@ -29,27 +29,28 @@ arithmetic); the on-chain-verifiable part is the live `inventory` projection.
 
 ## The nine differences
 
-The bottom panel narrates all nine canonical Display V1→V2 differences (source:
-`../learning/display-v2-guide.md`), highlighting the one each step demonstrates. See
-`hero-frontend/src/lessons.ts`.
+The code lab under the dapp shows the snippets relevant to the app's current state
+(wallet not connected → no hero → minted → equipped); across the four states all nine
+canonical Display V1→V2 differences (source: `../learning/display-v2-guide.md`) are
+covered, and each snippet links to its section of the guide. See
+`hero-frontend/src/snippets.ts` and `GOAL.md`.
 
-> **Transport note:** the guide says JSON-RPC can't resolve load operators — but on
-> `sui 1.69.2`, `showDisplay` **does** resolve `=>`, so this dapp's live projection works
-> over plain JSON-RPC today. gRPC / GraphQL are still the recommended SDK 2.0 clients
-> (JSON-RPC is deprecated), which is how the transport lesson is framed.
+> **Transport note:** the frontend is gRPC-only (`SuiGrpcClient` via the SDK 2.0 core
+> API) — JSON-RPC is deprecated. Devnet's fullnode resolves the `=>` load operators in
+> the Display response, so the live projection arrives already interpolated.
 
 ## Layout
 
 | Path | What |
 |---|---|
 | `hero-move/` | The `hero_forge::hero` Move package (Hero + Sword/Shield/Armor structs, equip/unequip via DOFs, `create_displays`). |
-| `hero-scripts/publish-localnet.sh` | Build + `test-publish` + `create_displays` (Hero + 3 item Displays in one PTB) + write `hero-frontend/src/deployment.ts`. |
+| `hero-scripts/publish-devnet.sh` | Build + publish to devnet + `create_displays` (Hero + 3 item Displays in one PTB) + write `hero-frontend/src/deployment.ts`. |
 | `hero-frontend/` | React + Vite frontend on **SDK 2.0** (`@mysten/dapp-kit-react`, `@mysten/sui` 2.x). |
 | `hero-frontend/src/chain.ts` | Reads the owned Hero (content + resolved Display + attached DOFs) and builds mint/equip/unequip PTBs. |
 | `hero-frontend/src/items.ts` | The fixed item catalog (stats + `summary` strings the Display projects). |
 | `hero-frontend/src/sprites.ts` | Deterministic equipped-set → composite sprite (pre-rendered PNGs in `public/sprites/`). |
-| `hero-frontend/src/lessons.ts` | The 9 V1→V2 differences + transport note. |
-| `hero-frontend/src/components/` | `HeroStage`, `Armory`, `LessonPanel`, `SignerBar`. |
+| `hero-frontend/src/snippets.ts` | The state → snippets map covering the 9 V1→V2 differences. |
+| `hero-frontend/src/components/` | `HeroStage`, `Armory`, `CodeLab`, `SignerBar`. |
 
 ## Prerequisites
 
@@ -66,14 +67,13 @@ The bottom panel narrates all nine canonical Display V1→V2 differences (source
 ```bash
 cd hero-frontend
 pnpm install
-pnpm publish:localnet   # publish package + create the 4 Displays → deployment.ts
-pnpm dev                # dev server on port 5175
+pnpm publish:devnet   # publish package + create the 4 Displays → deployment.ts
+pnpm dev              # dev server on port 5175
 ```
 
-> **Migration note:** the deployment tooling (`hero-scripts/publish-localnet.sh` and the
-> frontend client in `hero-frontend/src/dapp-kit.ts`) is being pointed at **devnet** — a
-> devnet publish script + gRPC client (`@mysten/sui/grpc`, the SDK 2.0 recommendation) land
-> in the next step. Sprites can be hosted on Walrus for a public deploy.
+> Devnet is wiped periodically — re-run `pnpm publish:devnet` after a wipe (the script
+> refreshes the chain id pinned in `hero-move/Move.toml`). Sprites can be hosted on
+> Walrus for a public deploy.
 
 Open `http://localhost:5175`. Use the **Dev key** signer (funded from the network faucet)
 for hands-free signing, or connect a wallet. Mint a Hero, then forge items and watch the

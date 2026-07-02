@@ -1,0 +1,6 @@
+[package]
+name = "hero_forge"
+edition = "2024"
+
+[environments]
+devnet = "b696f95e"
