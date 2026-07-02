@@ -3,76 +3,48 @@
 // code lab below shows the Display V1→V2 code behind whatever the dapp is doing now.
 import { useState } from 'react';
 import type { Transaction } from '@mysten/sui/transactions';
-import { useCurrentAccount, useDAppKit } from '@mysten/dapp-kit-react';
+import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
 import { ConnectButton } from '@mysten/dapp-kit-react/ui';
 import { NETWORK, PACKAGE_ID } from './deployment';
 import { HeroStage } from './components/HeroStage';
 import { Armory } from './components/Armory';
 import { CodeLab } from './components/CodeLab';
-import { useOwnedHero, buildMintHeroTx, buildEquipTx, buildUnequipTx } from './chain';
+import { useOwnedHero, signAndExecute, buildMintHeroTx, buildEquipTx, buildUnequipTx } from './chain';
 import { spriteFor } from './sprites';
 import type { Slot } from './items';
 import type { AppState } from './snippets';
 
-// Raw shape of the discriminated union the wallet signing path returns
-// (see SDK 2.0 wallet-builders).
-interface RawTx { digest: string; effects?: { status?: { success?: boolean; error?: string | null } } }
-interface RawResult {
-  Transaction?: RawTx;
-  FailedTransaction?: { status?: { error?: { message?: string } | string | null }; effects?: { status?: { error?: string | null } } };
-}
-
 export function App() {
-  const dAppKit = useDAppKit();
+  const client = useCurrentClient();
   const address = useCurrentAccount()?.address ?? null;
-  const [busy, setBusy] = useState(false);
-  const [busySlot, setBusySlot] = useState<Slot | null>(null);
+  const [pending, setPending] = useState<Slot | 'mint' | null>(null);
   const [error, setError] = useState('');
 
   const { data: hero, isLoading, refetch } = useOwnedHero(address);
 
-  async function run(tx: () => Transaction) {
+  async function run(action: Slot | 'mint', tx: () => Transaction) {
+    setPending(action);
     setError('');
     try {
-      const raw = (await dAppKit.signAndExecuteTransaction({
-        transaction: tx(),
-      })) as unknown as RawResult;
-      if (raw.FailedTransaction) {
-        const err = raw.FailedTransaction.status?.error;
-        const msg = typeof err === 'string' ? err : err?.message;
-        setError(msg ?? raw.FailedTransaction.effects?.status?.error ?? 'Transaction failed');
-        return false;
+      const r = await signAndExecute(tx());
+      if (!r.ok) {
+        setError(r.error ?? 'Transaction failed');
+        return;
       }
-      const t = raw.Transaction;
-      if (t?.effects?.status && t.effects.status.success === false) {
-        setError(t.effects.status.error ?? 'Transaction failed');
-        return false;
-      }
-      // Give the fullnode a moment to index the new object state before re-reading,
-      // otherwise listOwnedObjects/listDynamicFields can return the pre-tx snapshot.
-      await new Promise((res) => setTimeout(res, 800));
+      // Re-read only once the fullnode has indexed the transaction, otherwise
+      // listOwnedObjects/listDynamicFields can return the pre-tx snapshot.
+      await client.core.waitForTransaction({ digest: r.digest! });
       await refetch();
-      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      return false;
+    } finally {
+      setPending(null);
     }
   }
 
-  async function onMint() {
-    setBusy(true);
-    try { await run(buildMintHeroTx); } finally { setBusy(false); }
-  }
-  async function onEquip(slot: Slot) {
-    if (!hero) return;
-    setBusySlot(slot);
-    try { await run(() => buildEquipTx(hero.heroId, slot)); } finally { setBusySlot(null); }
-  }
-  async function onUnequip(slot: Slot) {
-    if (!hero) return;
-    setBusySlot(slot);
-    try { await run(() => buildUnequipTx(hero.heroId, slot)); } finally { setBusySlot(null); }
-  }
+  const onMint = () => run('mint', buildMintHeroTx);
+  const onEquip = (slot: Slot) => { if (hero) void run(slot, () => buildEquipTx(hero.heroId, slot)); };
+  const onUnequip = (slot: Slot) => { if (hero) void run(slot, () => buildUnequipTx(hero.heroId, slot)); };
 
   // The code lab is driven by what is actually on chain, not by an internal step
   // counter: wallet presence, Hero presence, and whether any item is attached.
@@ -124,11 +96,11 @@ export function App() {
             <p style={{ color: '#4b5563', margin: '10px 0 14px' }}>You don't have a Hero yet. Forge one to begin.</p>
             <button
               type="button"
-              onClick={onMint}
-              disabled={busy}
-              style={{ padding: '9px 22px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: busy ? 'wait' : 'pointer' }}
+              onClick={() => void onMint()}
+              disabled={pending !== null}
+              style={{ padding: '9px 22px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: pending ? 'wait' : 'pointer' }}
             >
-              {busy ? 'Minting…' : 'Mint Hero'}
+              {pending === 'mint' ? 'Minting…' : 'Mint Hero'}
             </button>
           </div>
         ) : (
@@ -136,7 +108,7 @@ export function App() {
             <HeroStage hero={hero} />
             <div>
               <h2 style={{ fontSize: '1rem', margin: '0 0 8px' }}>Armory</h2>
-              <Armory equipped={hero.equipped} busySlot={busySlot} onEquip={onEquip} onUnequip={onUnequip} disabled={busy || busySlot !== null} />
+              <Armory equipped={hero.equipped} busySlot={pending !== 'mint' ? pending : null} onEquip={onEquip} onUnequip={onUnequip} disabled={pending !== null} />
             </div>
           </div>
         )}

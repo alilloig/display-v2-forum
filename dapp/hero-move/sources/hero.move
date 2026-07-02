@@ -7,10 +7,9 @@
 /// dynamic-object-field load operator `=>`. Equip an item and the rendered Display
 /// changes; the Hero object itself is untouched.
 ///
-/// This is the capability the classic V1 Display could not express. gRPC / GraphQL are
-/// the recommended SDK 2.0 clients, but on the sui 1.69.x localnet this dapp targets
-/// JSON-RPC `showDisplay` also resolves the `=>` load operators — so the projection
-/// works today over plain JSON-RPC, and the transport story is a migration recommendation.
+/// This is the capability the classic V1 Display could not express. The dapp targets
+/// devnet over gRPC (the SDK 2.0 recommendation — JSON-RPC is deprecated); devnet's
+/// fullnode resolves the `=>` load operators in the Display response.
 #[allow(lint(self_transfer))]
 module hero_forge::hero;
 
@@ -122,21 +121,18 @@ public fun new_armor(name: String, image_url: String, attack: u64, defense: u64,
 }
 
 // === Equipping (dynamic object fields) ===
+// One generic attach/detach pair; the per-item entry points below only fix T and the key.
 
-public fun equip_sword(hero: &mut Hero, sword: Sword) {
-    assert!(!dof::exists_(&hero.id, sword_key()), EAlreadyEquipped);
-    dof::add(&mut hero.id, sword_key(), sword);
+fun equip<T: key + store>(hero: &mut Hero, key: String, item: T) {
+    assert!(!dof::exists_(&hero.id, key), EAlreadyEquipped);
+    dof::add(&mut hero.id, key, item);
 }
 
-public fun equip_shield(hero: &mut Hero, shield: Shield) {
-    assert!(!dof::exists_(&hero.id, shield_key()), EAlreadyEquipped);
-    dof::add(&mut hero.id, shield_key(), shield);
-}
+public fun equip_sword(hero: &mut Hero, sword: Sword) { equip(hero, sword_key(), sword) }
 
-public fun equip_armor(hero: &mut Hero, armor: Armor) {
-    assert!(!dof::exists_(&hero.id, armor_key()), EAlreadyEquipped);
-    dof::add(&mut hero.id, armor_key(), armor);
-}
+public fun equip_shield(hero: &mut Hero, shield: Shield) { equip(hero, shield_key(), shield) }
+
+public fun equip_armor(hero: &mut Hero, armor: Armor) { equip(hero, armor_key(), armor) }
 
 /// Convenience: mint a Sword and attach it in one call.
 public fun mint_and_equip_sword(hero: &mut Hero, name: String, image_url: String, attack: u64, summary: String, ctx: &mut TxContext) {
@@ -154,22 +150,22 @@ public fun mint_and_equip_armor(hero: &mut Hero, name: String, image_url: String
 // === Unequipping ===
 // Detach and return the item to the caller so the demo can show stats revert live.
 
+fun unequip<T: key + store>(hero: &mut Hero, key: String, ctx: &TxContext) {
+    assert!(dof::exists_(&hero.id, key), ENotEquipped);
+    let item: T = dof::remove(&mut hero.id, key);
+    transfer::public_transfer(item, ctx.sender());
+}
+
 public fun unequip_sword(hero: &mut Hero, ctx: &mut TxContext) {
-    assert!(dof::exists_(&hero.id, sword_key()), ENotEquipped);
-    let sword: Sword = dof::remove(&mut hero.id, sword_key());
-    transfer::public_transfer(sword, ctx.sender());
+    unequip<Sword>(hero, sword_key(), ctx)
 }
 
 public fun unequip_shield(hero: &mut Hero, ctx: &mut TxContext) {
-    assert!(dof::exists_(&hero.id, shield_key()), ENotEquipped);
-    let shield: Shield = dof::remove(&mut hero.id, shield_key());
-    transfer::public_transfer(shield, ctx.sender());
+    unequip<Shield>(hero, shield_key(), ctx)
 }
 
 public fun unequip_armor(hero: &mut Hero, ctx: &mut TxContext) {
-    assert!(dof::exists_(&hero.id, armor_key()), ENotEquipped);
-    let armor: Armor = dof::remove(&mut hero.id, armor_key());
-    transfer::public_transfer(armor, ctx.sender());
+    unequip<Armor>(hero, armor_key(), ctx)
 }
 
 // === Display creation ===
@@ -182,7 +178,7 @@ public fun unequip_armor(hero: &mut Hero, ctx: &mut TxContext) {
 /// projected. With nothing equipped every load is null and the field renders empty.
 ///
 /// Not unit-tested (test_scenario can't seed the DisplayRegistry singleton at 0xd);
-/// exercised end-to-end by hero-scripts/publish-localnet.sh instead.
+/// exercised end-to-end by hero-scripts/publish-devnet.sh instead.
 public fun create_displays(
     registry: &mut DisplayRegistry,
     publisher: &mut Publisher,

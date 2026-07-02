@@ -1,7 +1,7 @@
 // The three equipment slots. Each item can be minted+equipped once (the Move `equip_*`
 // aborts on a second attach) and then unequipped. Equipping attaches a dynamic object
 // field to the Hero; the resolved Display and the composite sprite update from that.
-import { ITEMS, SLOTS, type Slot } from '../items';
+import { ITEMS, SLOTS, statLabel, type Slot } from '../items';
 
 interface ArmoryProps {
   equipped: Set<Slot>;
@@ -18,7 +18,7 @@ export function Armory({ equipped, busySlot, onEquip, onUnequip, disabled }: Arm
         const item = ITEMS[slot];
         const on = equipped.has(slot);
         const busy = busySlot === slot;
-        const bonus = slot === 'sword' ? `+${item.attack} ATK` : slot === 'shield' ? `+${item.defense} DEF` : `+${item.defense} DEF / +${item.attack} ATK`;
+        const bonus = statLabel(item);
         return (
           <div key={slot} style={{ border: '1px solid #e2e2e2', borderRadius: 10, padding: 12, textAlign: 'center', background: on ? '#f0fdf4' : '#fff' }}>
             <img src={item.sprite} alt={item.name} style={{ width: 72, height: 72, objectFit: 'contain', imageRendering: 'pixelated' }} />

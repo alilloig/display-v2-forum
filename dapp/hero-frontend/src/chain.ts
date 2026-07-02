@@ -1,14 +1,32 @@
 // All chain I/O in one place: reading the connected wallet's Hero (struct fields +
-// resolved Display + which items are attached), and building the mint / equip / unequip
-// transactions. Reads go through the SDK 2.0 core API (`client.core.*`) over gRPC.
+// resolved Display + which items are attached), signing, and building the mint / equip /
+// unequip transactions. Reads go through the SDK 2.0 core API (`client.core.*`) over gRPC.
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
+import { dAppKit } from './dapp-kit';
 import { PACKAGE_ID } from './deployment';
 import { ITEMS, HERO_BASE, type Slot } from './items';
 
 const HERO_TYPE = `${PACKAGE_ID}::hero::Hero`;
+
+/** Normalized signing result so the UI doesn't care about the SDK's union shape. */
+export interface SignResult {
+  ok: boolean;
+  digest?: string;
+  error?: string;
+}
+
+/** Sign through the connected wallet and normalize the SDK's discriminated union. */
+export async function signAndExecute(tx: Transaction): Promise<SignResult> {
+  const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+  const t = result.$kind === 'FailedTransaction' ? result.FailedTransaction : result.Transaction;
+  if (!t.status.success) {
+    return { ok: false, digest: t.digest, error: t.status.error?.message ?? 'Transaction failed' };
+  }
+  return { ok: true, digest: t.digest };
+}
 
 export interface HeroView {
   heroId: string;

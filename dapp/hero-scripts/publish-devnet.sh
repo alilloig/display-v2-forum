@@ -50,6 +50,9 @@ fi
 echo "Move.toml [environments] devnet = ${CHAIN_ID}"
 
 # ── 4. Build + publish ───────────────────────────────────────────────────────
+# Fresh publish each run (not an upgrade): devnet is wiped periodically and
+# create_displays must register the types anew, so drop any previous record.
+rm -f "${MOVE_DIR}/Published.toml"
 
 echo "Publishing hero_forge to devnet..."
 PUBLISH_OUTPUT=$(sui client publish "${MOVE_DIR}" \

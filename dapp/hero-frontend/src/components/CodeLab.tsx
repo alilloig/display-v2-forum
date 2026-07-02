@@ -1,5 +1,5 @@
 // The code lab: a single-column stack of the snippets relevant to the dapp's current
-// state (see ../../GOAL.md). Each snippet names once the V1→V2 difference it showcases
+// state (see dapp/GOAL.md). Each snippet names once the V1→V2 difference it showcases
 // — the label doubles as a link to that section of the guide — and pairs real V1 code
 // with its V2 equivalent as independent side-by-side cards (stacking when narrow).
 import type { ReactNode } from 'react';

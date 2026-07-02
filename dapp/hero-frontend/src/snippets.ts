@@ -1,4 +1,4 @@
-// The teaching layer (see ../GOAL.md). The code lab shows only the snippets relevant
+// The teaching layer (see dapp/GOAL.md). The code lab shows only the snippets relevant
 // to the dapp's current state; across the four states, all nine canonical Display
 // V1→V2 differences from learning/display-v2-guide.md are covered. Each snippet pairs
 // real V1 code (the way it was actually written against sui::display) with the V2
