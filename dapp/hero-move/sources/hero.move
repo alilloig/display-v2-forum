@@ -156,15 +156,15 @@ fun unequip<T: key + store>(hero: &mut Hero, key: String, ctx: &TxContext) {
     transfer::public_transfer(item, ctx.sender());
 }
 
-public fun unequip_sword(hero: &mut Hero, ctx: &mut TxContext) {
+public fun unequip_sword(hero: &mut Hero, ctx: &TxContext) {
     unequip<Sword>(hero, sword_key(), ctx)
 }
 
-public fun unequip_shield(hero: &mut Hero, ctx: &mut TxContext) {
+public fun unequip_shield(hero: &mut Hero, ctx: &TxContext) {
     unequip<Shield>(hero, shield_key(), ctx)
 }
 
-public fun unequip_armor(hero: &mut Hero, ctx: &mut TxContext) {
+public fun unequip_armor(hero: &mut Hero, ctx: &TxContext) {
     unequip<Armor>(hero, armor_key(), ctx)
 }
 

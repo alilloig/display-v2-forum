@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { Transaction } from '@mysten/sui/transactions';
 import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
 import { ConnectButton } from '@mysten/dapp-kit-react/ui';
-import { NETWORK, PACKAGE_ID } from './deployment';
+import { NETWORK } from './deployment';
 import { HeroStage } from './components/HeroStage';
 import { Armory } from './components/Armory';
 import { CodeLab } from './components/CodeLab';
@@ -56,8 +56,6 @@ export function App() {
         ? 'equipped'
         : 'minted';
 
-  const deployed = PACKAGE_ID && !PACKAGE_ID.startsWith('0x0000');
-
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: '1.5rem 1.25rem 4rem', fontFamily: 'system-ui, sans-serif', color: '#111' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
@@ -70,12 +68,6 @@ export function App() {
         </div>
         <ConnectButton />
       </header>
-
-      {!deployed && (
-        <div style={{ padding: 12, background: '#fef2f2', color: '#991b1b', borderRadius: 8, fontSize: '0.85rem' }}>
-          No deployment found. Run <code>pnpm publish:devnet</code> (from <code>hero-frontend/</code>) to publish the package and generate <code>deployment.ts</code>.
-        </div>
-      )}
 
       {error && (
         <div style={{ padding: 10, background: '#fef2f2', color: '#991b1b', borderRadius: 8, fontSize: '0.82rem', marginBottom: 12, wordBreak: 'break-all' }}>

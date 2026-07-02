@@ -52,8 +52,9 @@ const { data } = await client.queryEvents({
   },
 });
 const displayId = data.at(-1)?.parsedJson?.id;`,
-      v2: `// The Display lives at an address derived from
-// the registry at 0xd — one read, nothing to scan.
+      v2: `// No event scanning: the fullnode computes the
+// Display address off 0xd and returns each object
+// with its display already resolved — one read.
 const owned = await client.core.listOwnedObjects({
   owner: address,
   type: \`\${PKG}::hero::Hero\`,
@@ -193,12 +194,11 @@ hero_display.add(
 // field, \`| ''\` is the fallback. Equip an
 // item and this projection changes — the
 // Hero itself is never mutated.
-hero_display.set(&hero_cap,
+hero_display.set(
+    &hero_cap,
     b"inventory".to_string(),
-    b"{$self=>['sword'].summary | ''}\\
-      {$self=>['shield'].summary | ''}\\
-      {$self=>['armor'].summary | ''}"
-        .to_string());`,
+    b"{$self=>['sword'].summary | ''}{$self=>['shield'].summary | ''}{$self=>['armor'].summary | ''}".to_string(),
+);`,
     },
     {
       diff: 4,

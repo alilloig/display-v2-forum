@@ -28,7 +28,7 @@ arithmetic); the on-chain-verifiable part is the live `inventory` projection.
 
 The code lab under the dapp shows the snippets relevant to the app's current state
 (wallet not connected → no hero → minted → equipped); across the four states all nine
-canonical Display V1→V2 differences (source: `learning/display-v2-guide.md`) are
+canonical Display V1→V2 differences (source: `../../learning/display-v2-guide.md`) are
 covered, and each snippet links to its section of the guide. See `src/snippets.ts` and
 `../GOAL.md`.
 
@@ -67,5 +67,5 @@ and watch the Display projection and composite sprite update.
 ## Beyond devnet
 
 Devnet is wiped periodically — re-run `pnpm publish:devnet` after a wipe (it refreshes
-the chain id pinned in `hero-move/Move.toml`). For a longer-lived deploy, point
+the chain id pinned in `../hero-move/Move.toml`). For a longer-lived deploy, point
 `src/dapp-kit.ts` and the publish script at testnet and host the sprites on Walrus.

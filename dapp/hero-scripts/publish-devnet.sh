@@ -30,7 +30,7 @@ echo "Active environment: $(sui client active-env)"
 
 ACTIVE_ADDR=$(sui client active-address)
 echo "Active address: ${ACTIVE_ADDR}"
-BALANCE=$(sui client gas --json 2>/dev/null | jq '[.[] | .mistBalance] | add // 0')
+BALANCE=$(sui client gas --json 2>/dev/null | jq '[.[] | .mistBalance] | add // 0' 2>/dev/null); BALANCE=${BALANCE:-0}
 if [ "${BALANCE}" -lt 500000000 ]; then
     echo "Balance low (${BALANCE} MIST) — requesting devnet faucet..."
     sui client faucet || echo "Faucet request failed (rate limit?) — continuing with current balance."
@@ -43,7 +43,7 @@ fi
 
 CHAIN_ID=$(sui client chain-identifier)
 if grep -q '^\[environments\]' "${MOVE_DIR}/Move.toml"; then
-    sed -i '' "s/^devnet = \".*\"/devnet = \"${CHAIN_ID}\"/" "${MOVE_DIR}/Move.toml"
+    sed "s/^devnet = \".*\"/devnet = \"${CHAIN_ID}\"/" "${MOVE_DIR}/Move.toml" > "${MOVE_DIR}/Move.toml.tmp" && mv "${MOVE_DIR}/Move.toml.tmp" "${MOVE_DIR}/Move.toml"
 else
     printf '\n[environments]\ndevnet = "%s"\n' "${CHAIN_ID}" >> "${MOVE_DIR}/Move.toml"
 fi
@@ -64,6 +64,7 @@ PACKAGE_ID=$(echo "${PUBLISH_OUTPUT}" \
 PUBLISHER_ID=$(echo "${PUBLISH_OUTPUT}" \
     | jq -r '.objectChanges[] | select(.type == "created" and (.objectType | test("0x2::package::Publisher"))) | .objectId')
 
+[ -n "${PACKAGE_ID}" ] && [ -n "${PUBLISHER_ID}" ] || { echo "ERROR: could not extract packageId/Publisher from publish output" >&2; exit 1; }
 echo "Package ID:   ${PACKAGE_ID}"
 echo "Publisher ID: ${PUBLISHER_ID}"
 
