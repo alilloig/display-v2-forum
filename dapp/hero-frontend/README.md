@@ -52,6 +52,18 @@ pnpm dev
 Open `http://localhost:5175` and connect a devnet wallet. Mint a Hero, then forge items
 and watch the Display projection and composite sprite update.
 
+## Public deploy (GitHub Pages)
+
+The app is hosted at <https://alilloig.github.io/display-v2-forum/>. Deploys are
+local builds pushed to the `gh-pages` branch (the build needs the generated
+`deployment.ts`, so CI can't produce it):
+
+```bash
+pnpm deploy:pages   # vite build (base /display-v2-forum/) + push dist/ to gh-pages
+```
+
+Re-run it after every `pnpm publish:devnet` so the site points at the live package.
+
 ## Layout
 
 | Path | What |
