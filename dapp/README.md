@@ -50,7 +50,7 @@ covered, and each snippet links to its section of the guide. See
 | `hero-frontend/src/items.ts` | The fixed item catalog (stats + `summary` strings the Display projects). |
 | `hero-frontend/src/sprites.ts` | Deterministic equipped-set → composite sprite (pre-rendered PNGs in `public/sprites/`). |
 | `hero-frontend/src/snippets.ts` | The state → snippets map covering the 9 V1→V2 differences. |
-| `hero-frontend/src/components/` | `HeroStage`, `Armory`, `CodeLab`, `SignerBar`. |
+| `hero-frontend/src/components/` | `HeroStage`, `Armory`, `CodeLab`. |
 
 ## Prerequisites
 
@@ -75,10 +75,9 @@ pnpm dev              # dev server on port 5175
 > refreshes the chain id pinned in `hero-move/Move.toml`). Sprites can be hosted on
 > Walrus for a public deploy.
 
-Open `http://localhost:5175`. Use the **Dev key** signer (funded from the network faucet)
-for hands-free signing, or connect a wallet. Mint a Hero, then forge items and watch the
-Display projection and composite sprite update as equipment changes while the Hero's raw
-struct fields stay fixed.
+Open `http://localhost:5175` and connect a devnet wallet. Mint a Hero, then forge items
+and watch the Display projection and composite sprite update as equipment changes while
+the Hero's raw struct fields stay fixed.
 
 ## Notes
 

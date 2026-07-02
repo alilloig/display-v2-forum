@@ -3,10 +3,9 @@
 // code lab below shows the Display V1→V2 code behind whatever the dapp is doing now.
 import { useState } from 'react';
 import type { Transaction } from '@mysten/sui/transactions';
+import { useCurrentAccount, useDAppKit } from '@mysten/dapp-kit-react';
 import { ConnectButton } from '@mysten/dapp-kit-react/ui';
 import { NETWORK, PACKAGE_ID } from './deployment';
-import { useSigner } from './SignerContext';
-import { SignerBar } from './components/SignerBar';
 import { HeroStage } from './components/HeroStage';
 import { Armory } from './components/Armory';
 import { CodeLab } from './components/CodeLab';
@@ -15,8 +14,17 @@ import { spriteFor } from './sprites';
 import type { Slot } from './items';
 import type { AppState } from './snippets';
 
+// Raw shape of the discriminated union the wallet signing path returns
+// (see SDK 2.0 wallet-builders).
+interface RawTx { digest: string; effects?: { status?: { success?: boolean; error?: string | null } } }
+interface RawResult {
+  Transaction?: RawTx;
+  FailedTransaction?: { status?: { error?: { message?: string } | string | null }; effects?: { status?: { error?: string | null } } };
+}
+
 export function App() {
-  const { address, signAndExecute } = useSigner();
+  const dAppKit = useDAppKit();
+  const address = useCurrentAccount()?.address ?? null;
   const [busy, setBusy] = useState(false);
   const [busySlot, setBusySlot] = useState<Slot | null>(null);
   const [error, setError] = useState('');
@@ -26,10 +34,22 @@ export function App() {
   async function run(tx: () => Transaction) {
     setError('');
     try {
-      const r = await signAndExecute(tx());
-      if (!r.ok) { setError(r.error ?? 'Transaction failed'); return false; }
+      const raw = (await dAppKit.signAndExecuteTransaction({
+        transaction: tx(),
+      })) as unknown as RawResult;
+      if (raw.FailedTransaction) {
+        const err = raw.FailedTransaction.status?.error;
+        const msg = typeof err === 'string' ? err : err?.message;
+        setError(msg ?? raw.FailedTransaction.effects?.status?.error ?? 'Transaction failed');
+        return false;
+      }
+      const t = raw.Transaction;
+      if (t?.effects?.status && t.effects.status.success === false) {
+        setError(t.effects.status.error ?? 'Transaction failed');
+        return false;
+      }
       // Give the fullnode a moment to index the new object state before re-reading,
-      // otherwise getOwnedObjects/getDynamicFields can return the pre-tx snapshot.
+      // otherwise listOwnedObjects/listDynamicFields can return the pre-tx snapshot.
       await new Promise((res) => setTimeout(res, 800));
       await refetch();
       return true;
@@ -79,8 +99,6 @@ export function App() {
         <ConnectButton />
       </header>
 
-      <SignerBar />
-
       {!deployed && (
         <div style={{ padding: 12, background: '#fef2f2', color: '#991b1b', borderRadius: 8, fontSize: '0.85rem' }}>
           No deployment found. Run <code>pnpm publish:devnet</code> (from <code>hero-frontend/</code>) to publish the package and generate <code>deployment.ts</code>.
@@ -96,7 +114,7 @@ export function App() {
       <main style={{ marginTop: 16 }}>
         {!address ? (
           <div style={{ padding: '2rem', textAlign: 'center', border: '1px dashed #d1d5db', borderRadius: 12, color: '#6b7280' }}>
-            Connect a wallet (or switch to the <strong>Dev key</strong> above for hands-free devnet signing) to begin.
+            Connect a devnet wallet to begin.
           </div>
         ) : isLoading ? (
           <p style={{ color: '#6b7280' }}>Loading your hero…</p>

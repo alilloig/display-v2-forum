@@ -49,9 +49,8 @@ pnpm publish:devnet
 pnpm dev
 ```
 
-Open `http://localhost:5175`. Use the **Dev key** signer (funded from the devnet faucet)
-for hands-free signing, or connect a wallet on devnet. Mint a Hero, then forge items and
-watch the Display projection and composite sprite update.
+Open `http://localhost:5175` and connect a devnet wallet. Mint a Hero, then forge items
+and watch the Display projection and composite sprite update.
 
 ## Layout
 
@@ -63,7 +62,7 @@ watch the Display projection and composite sprite update.
 | `src/items.ts` | The fixed catalog (stats + `summary` strings that the Display projects). |
 | `src/sprites.ts` | Deterministic equipped-set → composite sprite (8 pre-rendered PNGs in `public/sprites/`). |
 | `src/snippets.ts` | The state → snippets map covering the 9 V1→V2 differences. |
-| `src/components/` | `HeroStage`, `Armory`, `CodeLab`, `SignerBar`. |
+| `src/components/` | `HeroStage`, `Armory`, `CodeLab`. |
 
 ## Beyond devnet
 

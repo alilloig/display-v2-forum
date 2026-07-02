@@ -63,17 +63,25 @@ const owned = await client.core.listOwnedObjects({
     {
       diff: 5,
       kind: 'move',
-      v1: `// One owned Display<Hero>; its owner
-// both reads and writes.
+      v1: `// One owned object: claim it with the
+// Publisher, and whoever OWNS it
+// manages it.
+let mut hero_display =
+    display::new<Hero>(&publisher, ctx);
 transfer::public_transfer(
     hero_display, ctx.sender(),
-);`,
-      v2: `// Shared Display — anyone resolves it;
-// only the cap holder can edit it.
+);
+// later, as the owner:
+hero_display.add(key, value);`,
+      v2: `// Read/write split: the Display is
+// shared — anyone resolves it; every
+// edit presents the DisplayCap.
 display_registry::share(hero_display);
 transfer::public_transfer(
     hero_cap, ctx.sender(),
-);`,
+);
+// later, from any tx holding the cap:
+hero_display.set(&hero_cap, key, value);`,
     },
   ],
 
