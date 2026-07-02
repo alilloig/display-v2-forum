@@ -30,7 +30,7 @@ export const HERO_BASE = {
   baseDefense: 10,
   // On-chain image_url stays fixed to the base sprite — immutability. The rendered
   // composite (below) is a frontend projection of the equipped set.
-  imageUrl: '/sprites/hero.png',
+  imageUrl: 'sprites/hero.png',
 };
 
 export const ITEMS: Record<Slot, ItemDef> = {
@@ -39,21 +39,21 @@ export const ITEMS: Record<Slot, ItemDef> = {
     attack: 6,
     defense: 0,
     summary: '[Iron Sword +6 ATK] ',
-    sprite: '/sprites/hero_sword.png',
+    sprite: 'sprites/hero_sword.png',
   },
   shield: {
     name: 'Oak Shield',
     attack: 0,
     defense: 8,
     summary: '[Oak Shield +8 DEF] ',
-    sprite: '/sprites/hero_shield.png',
+    sprite: 'sprites/hero_shield.png',
   },
   armor: {
     name: 'Plate Armor',
     attack: 2,
     defense: 5,
     summary: '[Plate Armor +5 DEF +2 ATK] ',
-    sprite: '/sprites/hero_armor.png',
+    sprite: 'sprites/hero_armor.png',
   },
 };
 

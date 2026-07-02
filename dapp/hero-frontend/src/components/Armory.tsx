@@ -2,6 +2,7 @@
 // aborts on a second attach) and then unequipped. Equipping attaches a dynamic object
 // field to the Hero; the resolved Display and the composite sprite update from that.
 import { ITEMS, SLOTS, statLabel, type Slot } from '../items';
+import { asset } from '../sprites';
 
 interface ArmoryProps {
   equipped: Set<Slot>;
@@ -21,7 +22,7 @@ export function Armory({ equipped, busySlot, onEquip, onUnequip, disabled }: Arm
         const bonus = statLabel(item);
         return (
           <div key={slot} style={{ border: '1px solid #e2e2e2', borderRadius: 10, padding: 12, textAlign: 'center', background: on ? '#f0fdf4' : '#fff' }}>
-            <img src={item.sprite} alt={item.name} style={{ width: 72, height: 72, objectFit: 'contain', imageRendering: 'pixelated' }} />
+            <img src={asset(item.sprite)} alt={item.name} style={{ width: 72, height: 72, objectFit: 'contain', imageRendering: 'pixelated' }} />
             <div style={{ fontWeight: 600, fontSize: '0.85rem', marginTop: 4 }}>{item.name}</div>
             <div style={{ fontSize: '0.72rem', color: '#0f766e', marginBottom: 8 }}>{bonus}</div>
             {on ? (
